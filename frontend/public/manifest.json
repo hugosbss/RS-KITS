@@ -1,0 +1,18 @@
+{
+  "name": "SportDelivery",
+  "short_name": "SportDelivery",
+  "description": "Entrega de kits offline-first para eventos esportivos",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

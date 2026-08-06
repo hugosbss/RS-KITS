@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+}
+
+enum DeliveryStatus {
+  PENDING
+  DELIVERED_LOCAL
+  SYNCED
+  CONFLICT
+}
+
+enum SyncOperation {
+  KIT_DELIVERED
+  LOGIN
+  EDIT_NOTE
+  UPDATE_PHONE
+  CHECKIN
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+  events    Event[]
+  users     User[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String       @id @default(uuid())
+  email          String       @unique
+  passwordHash   String
+  name           String
+  role           UserRole     @default(OPERATOR)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  version        Int          @default(1)
+  deliveries     Delivery[]
+  devices        Device[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model Event {
+  id             String       @id @default(uuid())
+  name           String
+  slug           String       @unique
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  version        Int          @default(1)
+  athletes       Athlete[]
+  kits           Kit[]
+
+  @@map("events")
+}
+
+model Athlete {
+  id             String         @id @default(uuid())
+  eventId        String
+  event          Event          @relation(fields: [eventId], references: [id])
+  num            Int?
+  name           String
+  cpf            String?
+  category       String?
+  distance       String?
+  ageGroup       String?
+  specialCategory String?
+  birthDate      DateTime?
+  gender         String?
+  team           String?
+  city           String?
+  shirtSize      String?
+  phone          String?
+  email          String?
+  kitPickupBy    String?
+  notes          String?
+  obs1           String?
+  obs2           String?
+  alert          String?
+  deliveryStatus DeliveryStatus @default(PENDING)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  version        Int            @default(1)
+  deliveries     Delivery[]
+
+  @@index([eventId, name])
+  @@index([eventId, cpf])
+  @@index([eventId, num])
+  @@map("athletes")
+}
+
+model Kit {
+  id        String   @id @default(uuid())
+  eventId   String
+  event     Event    @relation(fields: [eventId], references: [id])
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  @@map("kits")
+}
+
+model Delivery {
+  id          String   @id @default(uuid())
+  athleteId   String
+  athlete     Athlete  @relation(fields: [athleteId], references: [id])
+  operatorId  String
+  operator    User     @relation(fields: [operatorId], references: [id])
+  deviceId    String?
+  device      Device?  @relation(fields: [deviceId], references: [id])
+  pickupBy    String?
+  document    String?
+  notes       String?
+  deliveredAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  version     Int      @default(1)
+
+  @@map("deliveries")
+}
+
+model Device {
+  id         String     @id @default(uuid())
+  deviceId   String     @unique
+  name       String?
+  userId     String?
+  user       User?      @relation(fields: [userId], references: [id])
+  userAgent  String?
+  lastSeenAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  version    Int        @default(1)
+  deliveries Delivery[]
+
+  @@map("devices")
+}
+
+model SyncLog {
+  id         String        @id @default(uuid())
+  operation  SyncOperation
+  entity     String
+  entityId   String
+  deviceId   String?
+  userId     String?
+  payload    Json?
+  syncedAt   DateTime      @default(now())
+  createdAt  DateTime      @default(now())
+
+  @@map("sync_logs")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  entity     String?
+  entityId   String?
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  deviceId   String?
+  ipAddress  String?
+  userAgent  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@map("audit_logs")
+}
