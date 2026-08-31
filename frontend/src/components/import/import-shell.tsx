@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
 import {
     AlertCircle,
     AlertTriangle,
@@ -12,7 +11,6 @@ import {
     FileSpreadsheet,
     FileText,
     HardDriveDownload,
-    LogOut,
     MapPin,
     PackageCheck,
     RefreshCw,
@@ -26,14 +24,14 @@ import {
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { clearAuth, getUser, type AuthUser } from "@/services/auth.service";
+import { useAppState } from "@/components/providers/app-context";
 
 export interface ImportedRow {
     id: string;
     num: string;
     nomeAtleta: string;
     kit: string;
-    distancia: string;
+    modalidade: string;
     fxEtaria: string;
     categEspecial: string;
     nascto: string;
@@ -50,29 +48,29 @@ export interface ImportedRow {
     obs2: string;
     alerta: string;
     nomeEvento: string;
-    statusValidacao: "VALIDO" | "ALERTA" | "ERRO";
+    statusValidacao: "VALIDO" | "ATENÇÃO" | "ERRO";
 }
 
 const TEMPLATE_HEADERS = [
     "Num",
     "Nome atleta",
     "KIT",
-    "Distância",
+    "Modalidade",
     "Fx Etaria",
-    "Categ Especial",
+    // "Categ Especial",
     "Nascto.",
     "Sexo",
     "Equipe",
     "Cidade/UF",
     "Camiseta",
-    "CPF Atleta",
-    "Cel",
-    "E-mail",
-    "Quem Vai retirar o KIT",
-    "Notas",
-    "Obs1",
-    "Obs2",
-    "Alerta",
+    // "CPF Atleta",
+    // "Cel",
+    // "E-mail",
+    // "Quem Vai retirar o KIT",
+    // "Notas",
+    // "Obs1",
+    // "Obs2",
+    // "Alerta",
     "Nome Evento",
 ];
 
@@ -82,7 +80,7 @@ const INITIAL_MOCK_PREVIEW: ImportedRow[] = [
         num: "1455",
         nomeAtleta: "João Carlos da Silva",
         kit: "Kit Padrão",
-        distancia: "10 KM",
+        modalidade: "10 KM",
         fxEtaria: "35–39",
         categEspecial: "Não",
         nascto: "12/04/1989",
@@ -106,7 +104,7 @@ const INITIAL_MOCK_PREVIEW: ImportedRow[] = [
         num: "1456",
         nomeAtleta: "Pedro Alves de Souza",
         kit: "Kit VIP",
-        distancia: "21 KM",
+        modalidade: "21 KM",
         fxEtaria: "30–34",
         categEspecial: "Não",
         nascto: "05/08/1992",
@@ -130,7 +128,7 @@ const INITIAL_MOCK_PREVIEW: ImportedRow[] = [
         num: "1457",
         nomeAtleta: "Maria Costa Ribeiro",
         kit: "Kit Padrão",
-        distancia: "5 KM",
+        modalidade: "5 KM",
         fxEtaria: "40–44",
         categEspecial: "Não",
         nascto: "18/11/1985",
@@ -147,20 +145,19 @@ const INITIAL_MOCK_PREVIEW: ImportedRow[] = [
         obs2: "",
         alerta: "Verificar documento",
         nomeEvento: "Maratona Internacional 2027",
-        statusValidacao: "ALERTA",
+        statusValidacao: "ATENÇÃO",
     },
 ];
 
 export function ImportShell() {
-    const router = useRouter();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const { currentUser, selectedEvent, importAthletes } = useAppState();
 
-    const [user, setUser] = useState<AuthUser | null>(null);
     const [online, setOnline] = useState(true);
 
     // Estados de Importação
-    const [previewData, setPreviewData] = useState<ImportedRow[]>(INITIAL_MOCK_PREVIEW);
-    const [fileName, setFileName] = useState<string | null>("exemplo_atletas_evento.csv");
+    const [previewData, setPreviewData] = useState<ImportedRow[]>([]);
+    const [fileName, setFileName] = useState<string | null>(null);
     const [isImporting, setIsImporting] = useState(false);
     const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
@@ -169,13 +166,6 @@ export function ImportShell() {
     const [backupMessage, setBackupMessage] = useState<string | null>(null);
 
     useEffect(() => {
-        const current = getUser();
-        if (!current) {
-            router.replace("/login");
-            return;
-        }
-
-        setUser(current);
         setOnline(navigator.onLine);
 
         const on = () => setOnline(true);
@@ -188,15 +178,7 @@ export function ImportShell() {
             removeEventListener("online", on);
             removeEventListener("offline", off);
         };
-    }, [router]);
-
-    if (!user) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">
-                Carregando módulo de importação...
-            </div>
-        );
-    }
+    }, []);
 
     // 1. GERAR BACKUP DO BANCO DE DADOS (JSON)
     const handleGenerateBackup = () => {
@@ -209,20 +191,20 @@ export function ImportShell() {
 
             const backupData = {
                 metadata: {
-                    sistema: "SportDelivery Offline-First",
+                    sistema: "RS KITS Offline-First",
                     versao: "1.0.0",
                     dataExportacao: now.toLocaleString("pt-BR"),
-                    operador: user.name,
+                    operador: "Operador RS KITS",
                 },
                 dbStats: {
-                    totalAtletas: 1450,
-                    entregasRealizadas: 890,
-                    estornosEfetuados: 12,
+                    totalAtletas: previewData.length,
+                    entregasRealizadas: 0,
                     eventosAtivos: 1,
                 },
-                atletas: INITIAL_MOCK_PREVIEW,
+                evento: selectedEvent?.name ?? "Nenhum evento selecionado",
+                atletas: previewData,
                 logsAuditoria: [
-                    { id: "1", acao: "BACKUP_CRIADO", usuario: user.name, timestamp: now.toISOString() },
+                    { id: "1", acao: "BACKUP_CRIADO", usuario: "Operador RS KITS", timestamp: now.toISOString() },
                 ],
             };
 
@@ -231,13 +213,13 @@ export function ImportShell() {
             const url = URL.createObjectURL(blob);
             const link = document.createElement("a");
             link.href = url;
-            link.download = `backup_sportdelivery_${timestamp}.json`;
+            link.download = `backup_rs_kits_${timestamp}.json`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
 
             setIsGeneratingBackup(false);
-            setBackupMessage(`Backup gerado com sucesso! Arquivo backup_sportdelivery_${timestamp}.json baixado.`);
+            setBackupMessage(`Backup gerado com sucesso! Arquivo backup_rs_kits_${timestamp}.json baixado.`);
         }, 600);
     };
 
@@ -273,7 +255,7 @@ export function ImportShell() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = "modelo_importacao_atletas_sportdelivery.csv";
+        link.download = "modelo_importacao_atletas_rs_kits.csv";
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -287,6 +269,10 @@ export function ImportShell() {
         setFileName(file.name);
         setImportSuccess(null);
 
+        if (file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xls")) {
+            alert("A importação XLSX será conectada ao leitor de planilhas na etapa de backend. Para esta validação frontend, exporte a planilha Modelo como CSV UTF-8 e importe o arquivo.");
+            return;
+        }
         const reader = new FileReader();
         reader.onload = (event) => {
             const text = event.target?.result as string;
@@ -312,7 +298,7 @@ export function ImportShell() {
                     num: cols[0] || `${1000 + idx}`,
                     nomeAtleta: cols[1] || `Atleta Importado ${idx + 1}`,
                     kit: cols[2] || "Kit Padrão",
-                    distancia: cols[3] || "10 KM",
+                    modalidade: cols[3] || "10 KM",
                     fxEtaria: cols[4] || "30–34",
                     categEspecial: cols[5] || "Não",
                     nascto: cols[6] || "01/01/1990",
@@ -328,8 +314,8 @@ export function ImportShell() {
                     obs1: cols[16] || "",
                     obs2: cols[17] || "",
                     alerta: cols[18] || "",
-                    nomeEvento: cols[19] || "Maratona Internacional 2027",
-                    statusValidacao: !cols[11] ? "ALERTA" : "VALIDO",
+                    nomeEvento: selectedEvent?.name || cols[19] || "",
+                    statusValidacao: !cols[11] ? "ATENÇÃO" : "VALIDO",
                 };
             });
 
@@ -348,10 +334,12 @@ export function ImportShell() {
 
         setTimeout(() => {
             setIsImporting(false);
-            setImportSuccess(`${previewData.length} atletas importados e sincronizados com sucesso no banco de dados local!`);
+            importAthletes(previewData.map((row) => ({ ...row, nomeEvento: selectedEvent?.name || row.nomeEvento })));
+            setImportSuccess(`${previewData.length} atleta(s) importado(s) para ${selectedEvent?.name}.`);
         }, 800);
     };
 
+    if (currentUser.role !== "ADMIN") return <div className="min-h-screen bg-slate-50"><Sidebar /><main className="p-8 lg:ml-64"><Card className="max-w-lg p-6"><h1 className="text-xl font-bold">Acesso restrito</h1><p className="mt-2 text-sm text-slate-500">Somente o administrador pode importar a planilha de um evento.</p></Card></main></div>;
     return (
         <div className="min-h-screen bg-slate-50 text-slate-950">
             <Sidebar />
@@ -360,46 +348,16 @@ export function ImportShell() {
             <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur lg:ml-64">
                 <div className="flex flex-col gap-3 p-4 sm:px-6 lg:px-8 xl:flex-row xl:items-center xl:justify-between">
                     <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Gestão de Dados & Contingência</p>
                         <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
                             <Database className="h-5 w-5 text-blue-600" /> Importação de Dados e Backup
                         </h1>
-                        <p className="text-xs text-slate-500">Maratona Internacional 2027</p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        {/* <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                online ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                            }`}
-                        >
-                            {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-                            {online ? "Online" : "Offline"}
-                        </span> */}
-
-                        <div className="hidden text-right sm:block">
-                            <p className="text-sm font-semibold">{user.name}</p>
-                        </div>
-
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                clearAuth();
-                                router.push("/login");
-                            }}
-                        >
-                            <LogOut className="h-4 w-4" /> Sair
-                        </Button>
+                        <p className="mt-1 text-sm text-slate-500">Evento selecionado: <strong>{selectedEvent?.name ?? "nenhum"}</strong></p>
                     </div>
                 </div>
             </header>
 
             <main className="p-4 sm:p-6 lg:ml-64 lg:p-8 space-y-6">
-                {/* GRID COM AS 2 OPÇÕES SOLICITADAS */}
                 <div className="grid gap-6 lg:grid-cols-2">
-
-                    {/* OPÇÃO 1: GERAR BACKUP DO BANCO DE DADOS */}
                     <Card className="border-slate-200 p-6 shadow-none flex flex-col justify-between space-y-5 bg-white">
                         <div className="space-y-4">
                             <div className="flex items-center gap-3">
@@ -420,10 +378,6 @@ export function ImportShell() {
                                     <div>
                                         <span className="text-slate-400 block">Kits Entregues:</span>
                                         <span className="font-bold text-emerald-600 text-sm">890 entregues</span>
-                                    </div>
-                                    <div>
-                                        <span className="text-slate-400 block">Estornos Registrados:</span>
-                                        <span className="font-bold text-amber-700 text-sm">12 estornos</span>
                                     </div>
                                 </div>
                             </div>
@@ -507,7 +461,7 @@ export function ImportShell() {
 
                         <Button
                             onClick={handleConfirmImport}
-                            disabled={isImporting || previewData.length === 0}
+                            disabled={isImporting || previewData.length === 0 || !selectedEvent}
                             size="lg"
                             className="h-14 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm"
                         >
@@ -522,21 +476,13 @@ export function ImportShell() {
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                         <div>
                             <h3 className="text-base font-bold text-slate-900">Pré-visualização e Validação dos Dados da Planilha</h3>
-                            <p className="text-xs text-slate-500">
-                                As 20 colunas exigidas pelo sistema foram mapeadas e validadas antes da gravação no banco de dados.
-                            </p>
                         </div>
-
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-600 border border-blue-200">
-                            20 Colunas Mapeadas
-                        </span>
                     </div>
 
                     <div className="max-h-[460px] overflow-x-auto overflow-y-auto rounded-xl border border-slate-200">
                         <table className="w-full text-left text-xs text-slate-700 whitespace-nowrap">
-                            <thead className="sticky top-0 bg-slate-100 font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                            <thead className="sticky top-0 bg-slate-100 font-bold uppercase tracking-wider text-center text-slate-600 border-b border-slate-200">
                                 <tr>
-                                    <th className="p-3">Status</th>
                                     {TEMPLATE_HEADERS.map((header) => (
                                         <th key={header} className="p-3">
                                             {header}
@@ -546,37 +492,26 @@ export function ImportShell() {
                             </thead>
                             <tbody className="divide-y divide-slate-100 bg-white">
                                 {previewData.map((row) => (
-                                    <tr key={row.id} className="hover:bg-slate-50">
-                                        <td className="p-3">
-                                            {row.statusValidacao === "VALIDO" ? (
-                                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                                                    <Check className="h-3 w-3" /> Válido
-                                                </span>
-                                            ) : (
-                                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
-                                                    <AlertTriangle className="h-3 w-3" /> Alerta
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="p-3 font-bold text-slate-900">#{row.num}</td>
+                                    <tr key={row.id} className="hover:bg-slate-50 text-center"> 
+                                        <td className="p-3 font-bold text-slate-900">{row.num}</td>
                                         <td className="p-3 font-semibold text-slate-900">{row.nomeAtleta}</td>
                                         <td className="p-3">{row.kit}</td>
-                                        <td className="p-3 font-semibold">{row.distancia}</td>
+                                        <td className="p-3 font-semibold">{row.modalidade}</td>
                                         <td className="p-3">{row.fxEtaria}</td>
-                                        <td className="p-3">{row.categEspecial}</td>
+                                        {/* <td className="p-3">{row.categEspecial}</td> */}
                                         <td className="p-3">{row.nascto}</td>
-                                        <td className="p-3">{row.sexo}</td>
+                                        <td className="p-3 text-center">{row.sexo}</td>
                                         <td className="p-3">{row.equipe}</td>
                                         <td className="p-3">{row.cidadeUf}</td>
-                                        <td className="p-3 font-bold text-blue-600">{row.camiseta}</td>
-                                        <td className="p-3">{row.cpfAtleta}</td>
+                                        <td className="p-3  text-center font-bold text-blue-600">{row.camiseta}</td>
+                                        {/* <td className="p-3">{row.cpfAtleta}</td>
                                         <td className="p-3">{row.cel}</td>
                                         <td className="p-3">{row.email}</td>
                                         <td className="p-3">{row.quemVaiRetirar}</td>
                                         <td className="p-3">{row.notas}</td>
                                         <td className="p-3">{row.obs1}</td>
-                                        <td className="p-3">{row.obs2}</td>
-                                        <td className="p-3">{row.alerta}</td>
+                                        <td className="p-3">{row.obs2}</td> */}
+                                        {/* <td className="p-3">{row.alerta}</td> */}
                                         <td className="p-3">{row.nomeEvento}</td>
                                     </tr>
                                 ))}

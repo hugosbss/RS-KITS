@@ -6,8 +6,8 @@ import { Providers } from '@/components/providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'SportDelivery',
-  description: 'Entrega de kits offline-first para eventos esportivos',
+  title: 'RS KITS',
+  description: 'Entrega de kits para eventos esportivos',
   manifest: '/manifest.json',
   icons: {
     icon: '/icons/icon.svg',
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'SportDelivery',
+    title: 'RS KITS',
   },
 };
 

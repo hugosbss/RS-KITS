@@ -1,1 +1,5 @@
-export { ReportShell as default } from '@/components/reports/reports-shell';
+import { ReportShell } from "@/components/reports/reports-shell";
+
+export default function ReportsPage() {
+    return <ReportShell />;
+}

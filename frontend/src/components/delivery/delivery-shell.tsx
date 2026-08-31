@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import {
     AlertTriangle,
     Check,
@@ -10,18 +9,23 @@ import {
     Clock3,
     ContactRound,
     Edit,
+    Eye,
     FileText,
     Filter,
     Layers,
-    LogOut,
+    KeyRound,
     MapPin,
     Monitor,
+    MoreHorizontal,
     PackageCheck,
+    Pencil,
     Plus,
     QrCode,
+    Receipt,
     RefreshCw,
     RotateCcw,
     Search,
+    Settings2,
     ShieldAlert,
     Sparkles,
     Trash2,
@@ -35,14 +39,19 @@ import {
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { clearAuth, getUser, type AuthUser } from "@/services/auth.service";
+import { useAppState } from "@/components/providers/app-context";
+import {
+    clearSecondScreenAthlete,
+    publishSecondScreenAthlete,
+    type SecondScreenDisplayMode,
+} from "@/components/delivery/second-screen";
 
 export type DeliveryStatus = "PENDENTE" | "ENTREGUE" | "ESTORNADO";
 type AthleteStatusFilter = DeliveryStatus | "TODOS";
-type DeliveryView = "OPERADOR" | "SEGUNDA_TELA";
 
 export interface Athlete {
     id: string;
+    pin?: string;
     num: string;
     nome: string;
     cpf: string;
@@ -72,11 +81,19 @@ export interface Athlete {
     // Dados de estorno
     dataEstorno?: string;
     usuarioEstorno?: string;
+
+    // Informações médicas e de emergência - Saúde
+    convenioMedico?: string;
+    tipoSanguineo?: string;
+    contatoEmergencia?: string;
+    relacaoAtleta?: string;
+    telefoneEmergencia?: string;
 }
 
 const INITIAL_ATHLETES: Athlete[] = [
     {
         id: "1",
+        pin: "1001",
         num: "1455",
         nome: "João Carlos da Silva",
         cpf: "123.456.789-00",
@@ -93,9 +110,16 @@ const INITIAL_ATHLETES: Athlete[] = [
         email: "joao.carlos@email.com",
         alerta: "Pendência de documento",
         status: "PENDENTE",
+
+        convenioMedico: "AMIL",
+        tipoSanguineo: "A+",
+        contatoEmergencia: "Maria Silva",
+        relacaoAtleta: "Treinador",
+        telefoneEmergencia: "(14) 99876-5432",
     },
     {
         id: "2",
+        pin: "1002",
         num: "1456",
         nome: "Pedro Alves de Souza",
         cpf: "234.567.890-11",
@@ -119,9 +143,16 @@ const INITIAL_ATHLETES: Athlete[] = [
         foneEntrega: "(11) 98765-4321",
         emailEntrega: "pedro.alves@email.com",
         terceiro: false,
+
+        convenioMedico: "AMIL",
+        tipoSanguineo: "A+",
+        contatoEmergencia: "Maria Silva",
+        relacaoAtleta: "Treinador",
+        telefoneEmergencia: "(14) 99876-5432",
     },
     {
         id: "3",
+        pin: "1003",
         num: "1457",
         nome: "Maria Costa Ribeiro",
         cpf: "345.678.901-22",
@@ -146,9 +177,16 @@ const INITIAL_ATHLETES: Athlete[] = [
         emailEntrega: "maria.costa@email.com",
         dataEstorno: "04/08/2026 10:45",
         usuarioEstorno: "Supervisão Ana",
+
+        convenioMedico: "AMIL",
+        tipoSanguineo: "A+",
+        contatoEmergencia: "Maria Silva",
+        relacaoAtleta: "Treinador",
+        telefoneEmergencia: "(14) 99876-5432",
     },
     {
         id: "4",
+        pin: "1004",
         num: "1458",
         nome: "Ana Beatriz Lima",
         cpf: "456.789.012-33",
@@ -165,9 +203,16 @@ const INITIAL_ATHLETES: Athlete[] = [
         email: "ana.lima@email.com",
         alerta: "",
         status: "PENDENTE",
+
+        convenioMedico: "AMIL",
+        tipoSanguineo: "A+",
+        contatoEmergencia: "Maria Silva",
+        relacaoAtleta: "Treinador",
+        telefoneEmergencia: "(14) 99876-5432",
     },
     {
         id: "5",
+        pin: "1005",
         num: "1459",
         nome: "Carlos Eduardo Santos",
         cpf: "567.890.123-44",
@@ -184,9 +229,16 @@ const INITIAL_ATHLETES: Athlete[] = [
         email: "carlos.santos@email.com",
         alerta: "",
         status: "PENDENTE",
+
+        convenioMedico: "AMIL",
+        tipoSanguineo: "A+",
+        contatoEmergencia: "Maria Silva",
+        relacaoAtleta: "Treinador",
+        telefoneEmergencia: "(14) 99876-5432",
     },
     {
         id: "6",
+        pin: "1006",
         num: "1460",
         nome: "Fernanda Oliveira Rossi",
         cpf: "678.901.234-55",
@@ -210,22 +262,31 @@ const INITIAL_ATHLETES: Athlete[] = [
         foneEntrega: "(11) 97222-9999",
         emailEntrega: "roberto@email.com",
         terceiro: true,
+
+        convenioMedico: "AMIL",
+        tipoSanguineo: "A+",
+        contatoEmergencia: "Maria Silva",
+        relacaoAtleta: "Treinador",
+        telefoneEmergencia: "(14) 99876-5432",
     },
 ];
 
 export function DeliveryShell() {
-    const router = useRouter();
-
-    const [user, setUser] = useState<AuthUser | null>(null);
+    const { selectedEvent, athletesByEvent, currentUser } = useAppState();
     const [online, setOnline] = useState(true);
     const [query, setQuery] = useState("");
-    const [eventName, setEventName] = useState("Maratona Internacional 2027");
+    const [eventName, setEventName] = useState(selectedEvent?.name ?? "Nenhum evento selecionado");
 
     // Estado da lista de atletas
-    const [athletes, setAthletes] = useState<Athlete[]>(INITIAL_ATHLETES);
+    const importedAthletes = useMemo<Athlete[]>(() => (selectedEvent ? (athletesByEvent[selectedEvent.id] ?? []).map((row) => ({
+        id: row.id, num: row.num, nome: row.nomeAtleta, cpf: row.cpfAtleta, sexo: row.sexo === "F" ? "F" : "M", nascimento: row.nascto,
+        cidadeUf: row.cidadeUf, equipe: row.equipe, distancia: row.modalidade, kit: row.kit, faixaEtaria: row.fxEtaria,
+        categoriaEspecial: row.categEspecial, camiseta: row.camiseta, celular: row.cel, email: row.email, alerta: row.alerta, status: "PENDENTE" as DeliveryStatus,
+    })) : []), [selectedEvent, athletesByEvent]);
+    const [athletes, setAthletes] = useState<Athlete[]>([]);
     const [selectedAthlete, setSelectedAthlete] = useState<Athlete | null>(null);
     const [statusFilter, setStatusFilter] = useState<AthleteStatusFilter>("TODOS");
-    const [activeView, setActiveView] = useState<DeliveryView>("OPERADOR");
+    const [secondScreenMode, setSecondScreenMode] = useState<SecondScreenDisplayMode>("MANUAL");
 
     // Modal de Entrega/Ficha do Atleta
     const [showDeliveryModal, setShowDeliveryModal] = useState(false);
@@ -244,7 +305,11 @@ export function DeliveryShell() {
     const [showResetModal, setShowResetModal] = useState(false);
     const [showRaffleModal, setShowRaffleModal] = useState(false);
     const [showEditAthleteModal, setShowEditAthleteModal] = useState(false);
+    const [showReceiptModal, setShowReceiptModal] = useState(false);
+    const [showDropDownUtilities, setShowDropDownUtilities] = useState(false);
     const [editingAthlete, setEditingAthlete] = useState<Athlete | null>(null);
+    const [receiptAthlete, setReceiptAthlete] = useState<Athlete | null>(null);
+    const [resetConfirmation, setResetConfirmation] = useState("");
 
     // Filtros de sorteio
     const [raffleFilterCategory, setRaffleFilterCategory] = useState("TODOS");
@@ -253,6 +318,37 @@ export function DeliveryShell() {
     const [raffleWinner, setRaffleWinner] = useState<Athlete | null>(null);
     const [isRaffling, setIsRaffling] = useState(false);
 
+    // Modal de PIN = Localizar atleta
+    const [showPinModal, setShowPinModal] = useState(false);
+    const [pin, setPin] = useState("");
+    const [pinError, setPinError] = useState("");
+
+    const handlePinSearch = () => {
+        const normalizedPin = pin.trim();
+
+        setPinError("");
+
+        if (!normalizedPin) {
+            setPinError("Informe o código PIN");
+            return;
+        }
+
+        const athlete = athletes.find(
+            (item) => item.pin === normalizedPin
+        );
+
+        if (!athlete) {
+            setPinError("Inválido");
+            return;
+        }
+
+        setShowPinModal(false);
+        setPin("");
+        setPinError("");
+
+        selectAthleteForDelivery(athlete);
+    };
+
     // Lista de equipes cadastradas
     const existingTeams = useMemo(() => {
         const set = new Set(athletes.map((a) => a.equipe).filter(Boolean));
@@ -260,13 +356,6 @@ export function DeliveryShell() {
     }, [athletes]);
 
     useEffect(() => {
-        const current = getUser();
-        if (!current) {
-            router.replace("/login");
-            return;
-        }
-
-        setUser(current);
         setOnline(navigator.onLine);
 
         const on = () => setOnline(true);
@@ -279,7 +368,13 @@ export function DeliveryShell() {
             removeEventListener("online", on);
             removeEventListener("offline", off);
         };
-    }, [router]);
+    }, []);
+
+    useEffect(() => {
+        setEventName(selectedEvent?.name ?? "Nenhum evento selecionado");
+        setAthletes(importedAthletes);
+        setSelectedAthlete(null);
+    }, [selectedEvent?.id, importedAthletes]);
 
     // Estatísticas
     const stats = useMemo(() => {
@@ -300,26 +395,32 @@ export function DeliveryShell() {
     }, [athletes, query, statusFilter]);
 
     const toggleStatusFilter = (status: DeliveryStatus) => setStatusFilter((current) => current === status ? "TODOS" : status);
-    const showAthleteOnSecondScreen = () => { if (!selectedAthlete) return; setShowDeliveryModal(false); setActiveView("SEGUNDA_TELA"); };
 
-    if (!user) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">
-                Carregando sistema de entrega...
-            </div>
-        );
-    }
+    const openSecondScreen = () => {
+        window.open("/delivery/second-screen", "_blank", "noopener,noreferrer");
+    };
 
-    // Ação de seleção do atleta -> ABRE O MODAL DE ENTREGA
-    if (activeView === "SEGUNDA_TELA" && selectedAthlete) {
-        const personalDetails = [
-            ["CPF do atleta", selectedAthlete.cpf], ["Nascimento", selectedAthlete.nascimento], ["Sexo", selectedAthlete.sexo], ["Celular", selectedAthlete.celular], ["E-mail", selectedAthlete.email], ["Cidade / UF", selectedAthlete.cidadeUf], ["Modalidade / Distância", selectedAthlete.distancia], ["Categoria", selectedAthlete.categoriaEspecial], ["Equipe / Assessoria", selectedAthlete.equipe], ["Faixa et?ria", selectedAthlete.faixaEtaria],
-        ];
-        return <div className="min-h-screen bg-slate-950 p-4 text-white sm:p-8"><section className="mx-auto max-w-6xl rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl sm:p-8"><div className="flex flex-col gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-400">Conferência de cadastro</p><h1 className="mt-1 text-2xl font-black">Informações do atleta</h1></div><Button variant="outline" onClick={() => setActiveView("OPERADOR")} className="border-slate-700 bg-slate-800 text-white hover:bg-slate-700 hover:text-white">Voltar</Button></div><div className="mt-6 grid gap-5 lg:grid-cols-[220px_1fr]"><div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-blue-400/20 bg-blue-500/15 p-6 text-center"><p className="text-xs font-bold uppercase tracking-wider text-blue-300">Número do atleta</p><p className="mt-2 text-6xl font-black text-blue-300">#{selectedAthlete.num}</p></div><div className="rounded-2xl border border-slate-700 bg-slate-800 p-6"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Nome completo</p><h2 className="mt-2 text-3xl font-black">{selectedAthlete.nome}</h2><div className="mt-6 grid gap-4 sm:grid-cols-2">{personalDetails.slice(0,4).map(([label,value]) => <div key={label}><p className="text-xs text-slate-500">{label}</p><p className="mt-1 font-semibold">{value}</p></div>)}</div></div></div><div className="mt-5 grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/50 p-5 sm:grid-cols-2 lg:grid-cols-3">{personalDetails.slice(4).map(([label,value]) => <div key={label}><p className="text-xs text-slate-400">{label}</p><p className="mt-1 font-bold">{value}</p></div>)}<div><p className="text-xs text-slate-400">Kit</p><p className="mt-1 font-bold">{selectedAthlete.kit}</p></div><div><p className="text-xs text-slate-400">Camiseta</p><p className="mt-1 text-xl font-black text-amber-400">{selectedAthlete.camiseta}</p></div><div><p className="text-xs text-slate-400">Status da retirada</p><p className="mt-1 font-black text-blue-300">{selectedAthlete.status === "PENDENTE" ? "PRONTO PARA RETIRADA" : selectedAthlete.status}</p></div></div></section></div>;
-    }
+    const showAthleteOnSecondScreen = (athlete?: Athlete) => {
+        const athleteToShow = athlete ?? selectedAthlete;
+
+        if (!athleteToShow) return;
+
+        setSelectedAthlete(athleteToShow);
+        publishSecondScreenAthlete(athleteToShow, "MANUAL");
+    };
+
+    const closeDeliveryModal = () => {
+        if (secondScreenMode === "MANUAL") {
+            clearSecondScreenAthlete();
+        }
+        setShowDeliveryModal(false);
+    };
 
     const selectAthleteForDelivery = (athlete: Athlete) => {
         setSelectedAthlete(athlete);
+        if (secondScreenMode === "AUTOMATICO") {
+            publishSecondScreenAthlete(athlete, "AUTOMATICO");
+        }
         setIsThirdParty(!!athlete.terceiro);
         setThirdPartyForm({
             nome: athlete.nomeEntrega || "",
@@ -330,9 +431,30 @@ export function DeliveryShell() {
         setShowDeliveryModal(true);
     };
 
+    const handleViewAthlete = (athlete: Athlete) => {
+        selectAthleteForDelivery(athlete);
+    };
+
+    const handleEditAthlete = (athleteId: string) => {
+        const athlete = athletes.find((item) => item.id === athleteId);
+        if (!athlete) return;
+
+        setEditingAthlete(athlete);
+        setShowEditAthleteModal(true);
+    };
+
+    const handleReceipt = (athleteId: string) => {
+        const athlete = athletes.find((item) => item.id === athleteId);
+        if (!athlete) return;
+
+        setReceiptAthlete(athlete);
+        setShowReceiptModal(true);
+    };
+
     // Confirmar entrega do kit
-    const handleDeliverKit = () => {
-        if (!selectedAthlete) return;
+    const handleDeliverKit = (athleteId?: string) => {
+        const athleteToDeliver = athleteId ? athletes.find((item) => item.id === athleteId) : selectedAthlete;
+        if (!athleteToDeliver) return;
 
         const now = new Date().toLocaleString("pt-BR", {
             day: "2-digit",
@@ -342,21 +464,22 @@ export function DeliveryShell() {
             minute: "2-digit",
         });
 
+        const isUsingModalContext = !athleteId && !!selectedAthlete;
         const updated: Athlete = {
-            ...selectedAthlete,
+            ...athleteToDeliver,
             status: "ENTREGUE",
             dataEntrega: now,
-            usuarioEntrega: user.name,
-            terceiro: isThirdParty,
-            nomeEntrega: isThirdParty ? thirdPartyForm.nome || "Terceiro" : selectedAthlete.nome,
-            cpfEntrega: isThirdParty ? thirdPartyForm.cpf || selectedAthlete.cpf : selectedAthlete.cpf,
-            foneEntrega: isThirdParty ? thirdPartyForm.fone || selectedAthlete.celular : selectedAthlete.celular,
-            emailEntrega: isThirdParty ? thirdPartyForm.email || selectedAthlete.email : selectedAthlete.email,
+            usuarioEntrega: currentUser.name,
+            terceiro: isUsingModalContext ? isThirdParty : false,
+            nomeEntrega: isUsingModalContext ? (thirdPartyForm.nome || "Terceiro") : athleteToDeliver.nome,
+            cpfEntrega: isUsingModalContext ? (thirdPartyForm.cpf || athleteToDeliver.cpf) : athleteToDeliver.cpf,
+            foneEntrega: isUsingModalContext ? (thirdPartyForm.fone || athleteToDeliver.celular) : athleteToDeliver.celular,
+            emailEntrega: isUsingModalContext ? (thirdPartyForm.email || athleteToDeliver.email) : athleteToDeliver.email,
         };
 
-        setAthletes((prev) => prev.map((a) => (a.id === selectedAthlete.id ? updated : a)));
+        setAthletes((prev) => prev.map((a) => (a.id === athleteToDeliver.id ? updated : a)));
         setSelectedAthlete(updated);
-        setShowDeliveryModal(false);
+        closeDeliveryModal();
     };
 
     // Estornar entrega do kit
@@ -374,11 +497,9 @@ export function DeliveryShell() {
                 if (a.id === athleteId) {
                     return {
                         ...a,
-                        // Ao estornar, retornamos o atleta ao status PENDENTE
-                        // e limpamos os dados de entrega para permitir nova retirada.
                         status: "PENDENTE",
                         dataEstorno: now,
-                        usuarioEstorno: user.name,
+                        usuarioEstorno: currentUser.name,
                         dataEntrega: undefined,
                         usuarioEntrega: undefined,
                         nomeEntrega: undefined,
@@ -399,7 +520,7 @@ export function DeliveryShell() {
                           ...prev,
                           status: "PENDENTE",
                           dataEstorno: now,
-                          usuarioEstorno: user.name,
+                          usuarioEstorno: currentUser.name,
                           dataEntrega: undefined,
                           usuarioEntrega: undefined,
                           nomeEntrega: undefined,
@@ -411,13 +532,13 @@ export function DeliveryShell() {
                     : null
             );
         }
-        setShowDeliveryModal(false);
+        closeDeliveryModal();
     };
 
     // Zerar todas as alterações e entregas
     const handleResetAllDeliveries = () => {
         setAthletes(
-            INITIAL_ATHLETES.map((a) => ({
+            importedAthletes.map((a) => ({
                 ...a,
                 status: "PENDENTE",
                 dataEntrega: undefined,
@@ -429,6 +550,11 @@ export function DeliveryShell() {
         setSelectedAthlete(null);
         setShowResetModal(false);
     };
+
+    const confirmationPhrase = "ZERAR ENTREGAS";
+
+    const canResetDeliveries =
+        resetConfirmation.trim().toUpperCase() === confirmationPhrase;
 
     // Realizar Sorteio
     const handleRunRaffle = () => {
@@ -485,57 +611,213 @@ export function DeliveryShell() {
 
             {/* Cabeçalho */}
             <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur lg:ml-64">
-                <div className="flex flex-col gap-3 p-4 sm:px-6 lg:px-8 xl:flex-row xl:items-center xl:justify-between">
-                    <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Evento Atual</p>
-                        <button
-                            onClick={() => setShowEventModal(true)}
-                            className="group flex items-center gap-1.5 text-lg font-bold text-slate-900 hover:text-blue-600 transition"
-                        >
-                            {eventName}
-                            <Edit className="h-4 w-4 text-slate-400 group-hover:text-blue-600" />
-                        </button>
-                        <p className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
-                            <MapPin className="h-3.5 w-3.5" /> São Paulo, SP · 15 de agosto
+                <div
+                    className="
+                        grid
+                        grid-cols-[minmax(0,1fr)_auto]
+                        items-center
+                        gap-3
+                        p-3
+                        sm:px-6
+                        lg:grid-cols-[minmax(180px,auto)_minmax(0,1fr)_auto]
+                        lg:gap-5
+                        lg:px-8
+                    "
+                >
+                    {/* Coluna 1: informações do evento */}
+                    <div className="min-w-0 justify-self-start">
+                        <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
+                            Evento Atual
+                        </p>
+                            <span className="min-w-0 truncate group
+                                flex
+                                max-w-full
+                                items-center
+                                gap-1
+                                text-base
+                                font-bold
+                                text-slate-900
+                                transition
+                                hover:text-blue-600
+                                sm:text-lg">
+                                {eventName}
+                            </span>
+
+                        <p className="mt-0.5 flex max-w-full items-center gap-1 truncate text-[10px] text-slate-500 sm:text-xs">
+                            <MapPin className="h-3 w-3 shrink-0 sm:h-3.5 sm:w-3.5" />
+                            <span className="truncate">
+                                São Paulo, SP · 15 de agosto
+                            </span>
                         </p>
                     </div>
 
-                    {/* Botões de Ação do Topo */}
-                    <div className="flex flex-wrap items-center gap-2">
+                    {/* Mini dashboard */}
+                    <div
+                        className="
+                            hidden
+                            min-w-0
+                            grid-cols-3
+                            gap-2
+                            min-[1200px]:col-start-2
+                            min-[1200px]:grid
+                            min-[1200px]:w-full
+                            min-[1200px]:max-w-none
+                            min-[1200px]:justify-self-stretch
+                            lg:gap-3
+                        "
+                    >
+                        <Card className="flex min-w-0 items-center justify-between border-slate-200 px-3 py-2 shadow-none">
+                            <div className="min-w-0">
+                                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                                    Total
+                                </p>
+
+                                <p className="text-xl font-bold leading-tight text-slate-900">
+                                    {stats.total}
+                                </p>
+                            </div>
+
+                            <div className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600">
+                                <Users className="h-4 w-4" />
+                            </div>
+                        </Card>
+
+                        <Card className="flex min-w-0 items-center justify-between border-emerald-200 bg-emerald-50/40 px-3 py-2 shadow-none">
+                            <div className="min-w-0">
+                                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                    Entregues
+                                </p>
+
+                                <p className="text-xl font-bold leading-tight text-emerald-700">
+                                    {stats.entregues}
+                                </p>
+
+                                <p className="truncate text-[10px] font-medium text-emerald-600">
+                                    {stats.pct}% do total
+                                </p>
+                            </div>
+
+                            <div className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                                <PackageCheck className="h-4 w-4" />
+                            </div>
+                        </Card>
+
+                        <Card className="flex min-w-0 items-center justify-between border-blue-200 bg-blue-50/40 px-3 py-2 shadow-none">
+                            <div className="min-w-0">
+                                <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                                    Pendentes
+                                </p>
+
+                                <p className="text-xl font-bold leading-tight text-blue-600">
+                                    {stats.pendentes}
+                                </p>
+
+                                <p className="truncate text-[10px] font-medium text-blue-600">
+                                    Aguardando na fila
+                                </p>
+                            </div>
+
+                            <div className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                                <Clock3 className="h-4 w-4" />
+                            </div>
+                        </Card>
+                    </div>
+
+                    {/* Coluna 3: utilitários */}
+                    <div
+                        className="
+                            relative
+                            justify-self-end
+                            lg:col-start-3
+                        "
+                    >
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setShowRaffleModal(true)}
-                            className="bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 font-semibold"
+                            onClick={() => setShowDropDownUtilities((prev) => !prev)}
+                            className="
+                                flex
+                                items-center
+                                gap-1
+                                whitespace-nowrap
+                                border-accent-200
+                                bg-accent
+                                px-2
+                                text-xs
+                                font-semibold
+                                text-accent-foreground
+                                hover:bg-accent/90
+                                sm:px-3
+                                sm:text-sm
+                            "
                         >
-                            <Trophy className="h-4 w-4 text-amber-600 mr-1" /> Realizar SORTEIO
+                            <Settings2 className="h-3.5 w-3.5 shrink-0 sm:mr-2 sm:h-4 sm:w-4" />
+
+                            <span className="hidden sm:inline">
+                                Utilitários
+                            </span>
                         </Button>
 
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowResetModal(true)}
-                            className="bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 font-semibold"
-                        >
-                            <Trash2 className="h-4 w-4 text-rose-600 mr-1" /> Zerar Entregas
-                        </Button>
-
-                        <div className="h-6 w-px bg-slate-200 hidden sm:block" />
-
-                        <div className="hidden text-right sm:block">
-                            <p className="text-sm font-semibold">{user.name}</p>
-                        </div>
-
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                clearAuth();
-                                router.push("/login");
-                            }}
-                        >
-                            <LogOut className="h-4 w-4" /> Sair
-                        </Button>
+                        {showDropDownUtilities && (
+                            <div className="absolute right-0 top-full z-40 mt-2 w-64 max-w-[calc(100vw-1.5rem)] rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setShowDropDownUtilities(false);
+                                        setShowResetModal(true);
+                                    }}
+                                    className="w-full justify-start rounded-lg text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                >
+                                    <Trash2 className="mr-2 h-4 w-4 shrink-0" />
+                                    Zerar Entregas
+                                </Button>
+                                
+                                <div className="mt-1 rounded-lg border border-indigo-100 bg-indigo-50/60 p-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowDropDownUtilities(false);
+                                            openSecondScreen();
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+                                    >
+                                        <Monitor className="h-4 w-4 shrink-0" />
+                                        Abrir Segunda Tela
+                                    </button>
+                                    <div className="mt-2 px-2">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">Transmissão</p>
+                                        <div className="mt-1 grid grid-cols-2 rounded-lg bg-white p-0.5 text-xs font-semibold">
+                                            {(["MANUAL", "AUTOMATICO"] as SecondScreenDisplayMode[]).map((mode) => (
+                                                <button
+                                                    key={mode}
+                                                    type="button"
+                                                    aria-pressed={secondScreenMode === mode}
+                                                    onClick={() => setSecondScreenMode(mode)}
+                                                    className={`rounded-md px-2 py-1.5 transition ${secondScreenMode === mode ? "bg-indigo-600 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100"}`}
+                                                >
+                                                    {mode === "MANUAL" ? "Manual" : "Automático"}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <p className="mt-1.5 text-[10px] leading-tight text-slate-500">
+                                            {secondScreenMode === "AUTOMATICO" ? "Exibe o atleta selecionado por 90 segundos." : "Use “Espelhar” para enviar o atleta à segunda tela."}
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setShowDropDownUtilities(false);
+                                        setShowRaffleModal(true);
+                                    }}
+                                    className="mt-1 w-full justify-start rounded-lg text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                                >
+                                    <Trophy className="mr-2 h-4 w-4 shrink-0" />
+                                    Realizar Sorteio
+                                </Button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </header>
@@ -543,7 +825,7 @@ export function DeliveryShell() {
             {/* Conteúdo Principal */}
             <main className="p-4 sm:p-6 lg:ml-64 lg:p-8 space-y-6">
                 {/* Linha/Bloco de Status e Métricas do Evento */}
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {/* <div className="mx-auto grid max-w-5xl gap-4 sm:grid-cols-2 lg:grid-cols-3 justify-center">
                     <Card className="p-4 border-slate-200 shadow-none flex items-center justify-between">
                         <div>
                             <p className="text-xs font-medium text-slate-500 uppercase">Total Atletas</p>
@@ -565,17 +847,6 @@ export function DeliveryShell() {
                         </div>
                     </Card>
 
-                    <Card className="p-4 border-amber-200 bg-amber-50/40 shadow-none flex items-center justify-between">
-                        <div>
-                            <p className="text-xs font-medium text-amber-800 uppercase">Estornados</p>
-                            <p className="text-2xl font-bold text-amber-800">{stats.estornados}</p>
-                            <p className="text-xs text-amber-700 font-medium">Reversões efetuadas</p>
-                        </div>
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
-                            <RotateCcw className="h-5 w-5" />
-                        </div>
-                    </Card>
-
                     <Card className="p-4 border-blue-200 bg-blue-50/40 shadow-none flex items-center justify-between">
                         <div>
                             <p className="text-xs font-medium text-blue-600 uppercase">Pendentes de Entrega</p>
@@ -586,7 +857,7 @@ export function DeliveryShell() {
                             <Clock3 className="h-5 w-5" />
                         </div>
                     </Card>
-                </div>
+                </div> */}
 
                 {/* BLOCO DE BUSCA JUNTO COM A TABELA (LAYOUT COMPACTO E DIRETO) */}
                 <Card className="border-slate-200 p-5 shadow-none space-y-4">
@@ -608,24 +879,43 @@ export function DeliveryShell() {
                             />
                         </div>
 
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="flex w-full items-center gap-2 sm:w-auto">
                             <Button
                                 onClick={() => {
-                                    if (filteredAthletes[0]) selectAthleteForDelivery(filteredAthletes[0]);
+                                    if (filteredAthletes[0]) {
+                                        selectAthleteForDelivery(filteredAthletes[0]);
+                                    }
                                 }}
-                                className="h-12 rounded-xl px-6 flex-1 sm:flex-none"
+                                className="h-12 flex-1 rounded-xl px-4 sm:flex-none sm:px-6"
                             >
-                                <Search className="h-4 w-4 mr-1.5" /> Buscar
+                                <Search className="mr-1.5 h-4 w-4 shrink-0" />
+                                Buscar
                             </Button>
-
+                            
                             <Button
                                 variant="outline"
                                 onClick={() => {
-                                    if (athletes[0]) selectAthleteForDelivery(athletes[0]);
+                                    if (athletes[0]) {
+                                        selectAthleteForDelivery(athletes[0]);
+                                    }
                                 }}
-                                className="h-12 rounded-xl px-4 text-blue-600 border-blue-200 hover:bg-blue-50"
+                                className="h-12 rounded-xl border-blue-200 px-3 text-blue-600 hover:bg-blue-50 sm:px-4"
                             >
-                                <QrCode className="h-5 w-5 mr-1.5" /> QR Code
+                                <QrCode className="mr-1.5 h-5 w-5 shrink-0" />
+                                <span className="hidden sm:inline">QR Code</span>
+                            </Button>
+                            
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                    setPin("");
+                                    setPinError("");
+                                    setShowPinModal(true);
+                                }}
+                                className="h-12 shrink-0 rounded-xl border-amber-200 bg-amber-50 px-3 text-amber-900 hover:bg-amber-100 sm:px-4">
+                                <span className="sm:hidden">PIN</span>
+                                <span className="hidden sm:inline">CÓDIGO PIN</span>
                             </Button>
                         </div>
                     </div>
@@ -635,16 +925,20 @@ export function DeliveryShell() {
                         <div>
                             <h3 className="text-base font-bold text-slate-900">Lista de Atletas do Evento</h3>
                             <p className="text-xs text-slate-500">
-                                Exibindo {filteredAthletes.length} de {athletes.length} atletas. Selecione um atleta e abra a conferência na segunda tela.
+                                Exibindo {athletes.length} atletas.
                             </p>
-                            <Button variant="outline" size="sm" disabled={!selectedAthlete} onClick={showAthleteOnSecondScreen} className="mt-3 border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40">
+                            {/* <Button variant="outline" size="sm" disabled={!selectedAthlete} onClick={showAthleteOnSecondScreen} className="mt-3 border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 disabled:opacity-40">
                                 <Monitor className="mr-1.5 h-4 w-4" /> Exibir na Segunda Tela
-                            </Button>
+                            </Button> */}
+
+                            {/* <Button variant="outline" size="sm" onClick={() => { setPin(""); setPinError(""); setShowPinModal(true); }} className="mt-3 ml-2 border-amber-200 bg-amber-50 text-amber-900 hover:bg-amber-100">
+                                <p>CÓDIGO PIN</p>
+                            </Button> */}
                         </div>
 
                         {/* Filtros de status */}
                         <div className="flex flex-wrap items-center gap-2 text-xs font-medium">
-                            {(["ENTREGUE", "ESTORNADO", "PENDENTE"] as DeliveryStatus[]).map((status) => <button key={status} type="button" aria-pressed={statusFilter === status} onClick={() => toggleStatusFilter(status)} className={"inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 " + (statusFilter === status ? "bg-slate-700 text-white border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200")}><span className={"h-2 w-2 rounded-full " + (status === "ENTREGUE" ? "bg-emerald-500" : status === "ESTORNADO" ? "bg-amber-500" : "bg-slate-400")} /> {status === "ENTREGUE" ? "Entregues" : status === "ESTORNADO" ? "Estornados" : "Pendentes"} ({status === "ENTREGUE" ? stats.entregues : status === "ESTORNADO" ? stats.estornados : stats.pendentes})</button>)}
+                            {(["ENTREGUE", "PENDENTE"] as DeliveryStatus[]).map((status) => <button key={status} type="button" aria-pressed={statusFilter === status} onClick={() => toggleStatusFilter(status)} className={"inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 " + (statusFilter === status ? "bg-slate-700 text-white border-slate-700" : "bg-slate-100 text-slate-700 border-slate-200")}><span className={"h-2 w-2 rounded-full " + (status === "ENTREGUE" ? "bg-emerald-500" : status === "ESTORNADO" ? "bg-amber-500" : "bg-slate-400")} /> {status === "ENTREGUE" ? "Entregues" : status === "ESTORNADO" ? "Estornados" : "Pendentes"} ({status === "ENTREGUE" ? stats.entregues : stats.pendentes})</button>)}
                             {statusFilter !== "TODOS" && <button type="button" onClick={() => setStatusFilter("TODOS")} className="px-2 py-1 text-slate-500 underline">Limpar filtro</button>}
                         </div>
                     </div>
@@ -656,31 +950,15 @@ export function DeliveryShell() {
                                 <tr>
                                     <th className="p-3">NUM</th>
                                     <th className="p-3">Nome Atleta</th>
-                                    {/* <th className="p-3">CPF</th> */}
                                     <th className="p-3">Sexo</th>
                                     <th className="p-3">Nascimento</th>
                                     <th className="p-3">Cidade/UF</th>
                                     <th className="p-3">Equipe</th>
-                                    <th className="p-3">Distância</th>
+                                    <th className="p-3">Modalidade</th>
                                     <th className="p-3">KIT</th>
-                                    {/* <th className="p-3">Fx. Etária</th> */}
-                                    {/* <th className="p-3">Cat. Especial</th> */}
                                     <th className="p-3">Camiseta</th>
-                                    {/* <th className="p-3">Celular</th> */}
-                                    {/* <th className="p-3">Email</th> */}
-                                    <th className="p-3">Alerta</th>
-                                    <th className="p-3 text-center">Retirar KIT</th>
-                               
-                                    {/* ir para informações adicionais em ações */}
-
-                                    {/* <th className="p-3">Data Estorno</th>
-                                    <th className="p-3">Usuário Estorno</th>
-                                    <th className="p-3">Data Entrega</th>
-                                    <th className="p-3">Usuário Entrega</th>
-                                    <th className="p-3">Nome Entrega</th>
-                                    <th className="p-3">CPF Entrega</th> 
-                                    <th className="p-3">Fone Entrega</th>
-                                    <th className="p-3">Email Entrega</th> */}
+                                    {/* <th className="p-3">Alerta</th> */}
+                                    <th className="p-3 text-center">STATUS</th>
                                     <th className="p-3 text-center">Ações</th>
                                 </tr>
                             </thead>
@@ -699,74 +977,108 @@ export function DeliveryShell() {
 
                                     return (
                                         <tr key={athlete.id} onClick={() => selectAthleteForDelivery(athlete)} className={rowBgClass}>
-                                            <td className="p-3 font-bold text-slate-900">#{athlete.num}</td>
-                                            <td className="p-3 font-semibold text-slate-900">{athlete.nome}</td>
-                                            {/* <td className="p-3">{athlete.cpf}</td> */}
+                                            <td className="p-3 text-slate-900">{athlete.num}</td>
+                                            <td className="p-3 text-slate-900">{athlete.nome}</td>
                                             <td className="p-3">{athlete.sexo}</td>
                                             <td className="p-3">{athlete.nascimento}</td>
                                             <td className="p-3">{athlete.cidadeUf}</td>
                                             <td className="p-3 font-medium text-slate-800">{athlete.equipe}</td>
                                             <td className="p-3 font-semibold">{athlete.distancia}</td>
                                             <td className="p-3">{athlete.kit}</td>
-                                            {/* <td className="p-3">{athlete.faixaEtaria}</td> */}
-                                            {/* <td className="p-3">{athlete.categoriaEspecial}</td> */}
-                                            <td className="p-3 font-bold text-blue-600">{athlete.camiseta}</td>
-                                            {/* <td className="p-3">{athlete.celular}</td> */}
-                                            {/* <td className="p-3">{athlete.email}</td> */}
-                                            <td className="p-3">
+                                            <td className="p-3 text-slate-900">{athlete.camiseta}</td>
+                                            {/* <td className="p-3">
                                                 {athlete.alerta ? (
-                                                    <span className="text-amber-700 font-semibold flex items-center gap-1">
-                                                        <ShieldAlert className="h-3.5 w-3.5" /> {athlete.alerta}
+                                                    <span className="text-amber-700 inline-flex items-center justify-center p-1.5 gap-1">
+                                                        <ShieldAlert className="h-3.5 w-3.5" />
                                                     </span>
                                                 ) : (
-                                                    <span className="text-slate-400">-</span>
+                                                    <span className="text-slate-400"></span>
                                                 )}
-                                            </td>
+                                            </td> */}
 
                                             <td className="p-3 text-center">
-                                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs border ${statusBadgeClass}`}>
-                                                    {athlete.status === "ENTREGUE" && <Check className="h-3 w-3" />}
-                                                    {athlete.status === "ESTORNADO" && <RotateCcw className="h-3 w-3" />}
-                                                    {athlete.status}
+                                                <span className={`inline-flex items-center justify-center rounded-full p-1.5 border ${statusBadgeClass}`}>
+                                                    {athlete.status === "ENTREGUE" && <Check className="h-3.5 w-3.5" />}
+                                                    {athlete.status === "ESTORNADO" && <RotateCcw className="h-3.5 w-3.5" />}
+                                                    {/* {athlete.status === "PENDENTE" && <Clock3 className="h-3.5 w-3.5" />} */}
                                                 </span>
                                             </td>
 
-                                            {/* <td className="p-3 text-amber-900 font-mono text-[11px]">{athlete.dataEstorno || "-"}</td>
-                                            <td className="p-3 text-amber-900">{athlete.usuarioEstorno || "-"}</td>
-                                            <td className="p-3 text-emerald-900 font-mono text-[11px]">{athlete.dataEntrega || "-"}</td>
-                                            <td className="p-3 text-emerald-900">{athlete.usuarioEntrega || "-"}</td>
-                                            <td className="p-3">{athlete.nomeEntrega || "-"}</td>
-                                            <td className="p-3">{athlete.cpfEntrega || "-"}</td>
-                                            <td className="p-3">{athlete.foneEntrega || "-"}</td>
-                                            <td className="p-3">{athlete.emailEntrega || "-"}</td> */}
+                                            <td className="p-3">
+                                              <div className="flex items-center justify-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1">
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleViewAthlete(athlete);
+                                                  }}
+                                                  className="h-7 w-7 p-0 text-slate-600 hover:bg-slate-100"
+                                                  title="Ver detalhes"
+                                                >
+                                                  <Eye className="h-3.5 w-3.5" />
+                                                </Button>
+                                                                                        
+                                                {/* Editar */}
+                                                <Button
+                                                  variant="ghost"
+                                                  size="sm"
+                                                  onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    handleEditAthlete(athlete.id);
+                                                  }}
+                                                  className="h-7 w-7 p-0 text-slate-600 hover:bg-slate-100"
+                                                  title="Editar atleta"
+                                                >
+                                                  <Pencil className="h-3.5 w-3.5" />
+                                                </Button>
+                                                                                        
+                                                {/* Entregar kit */}
+                                                {athlete.status !== "ENTREGUE" && (
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={(event) => {
+                                                      event.stopPropagation();
+                                                      handleDeliverKit(athlete.id);
+                                                    }}
+                                                    className="h-7 w-7 p-0 text-green-700 hover:bg-green-100"
+                                                    title="Entregar Kit"
+                                                  >
+                                                    <Check className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                )}
+                                            
+                                                {/* Estornar */}
+                                                {athlete.status === "ENTREGUE" && (
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={(event) => {
+                                                      event.stopPropagation();
+                                                      handleReverseDelivery(athlete.id);
+                                                    }}
+                                                    className="h-7 w-7 p-0 text-amber-700 hover:bg-amber-100"
+                                                    title="Estornar Kit"
+                                                  >
+                                                    <RotateCcw className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                )}
 
-                                            <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            setEditingAthlete(athlete);
-                                                            setShowEditAthleteModal(true);
-                                                        }}
-                                                        className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600"
-                                                        title="Editar Atleta"
-                                                    >
-                                                        <Edit className="h-3.5 w-3.5" />
-                                                    </Button>
-
-                                                    {athlete.status === "ENTREGUE" && (
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => handleReverseDelivery(athlete.id)}
-                                                            className="h-7 w-7 p-0 text-amber-700 hover:bg-amber-100"
-                                                            title="Estornar Kit"
-                                                        >
-                                                            <RotateCcw className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    )}
-                                                </div>
+                                                {/* Exibir na 2º tela */}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        showAthleteOnSecondScreen(athlete);
+                                                    }}
+                                                    className="h-7 w-7 p-0 text-indigo-700 hover:bg-indigo-100"
+                                                    title="Espelhar"
+                                                  >
+                                                    <Monitor className="h-3.5 w-3.5" />
+                                                </Button>
+                                              </div>
                                             </td>
                                         </tr>
                                     );
@@ -785,17 +1097,17 @@ export function DeliveryShell() {
                         <div className="flex items-start justify-between border-b border-slate-100 pb-4">
                             <div className="flex items-center gap-4">
                                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-600 text-white font-black text-xl shadow-md">
-                                    #{selectedAthlete.num}
+                                    {selectedAthlete.num}
                                 </div>
                                 <div>
-                                    <h2 className="text-xl font-bold text-slate-900">{selectedAthlete.nome}</h2>
+                                    <h2 className="text-xl semi-bold text-slate-900">{selectedAthlete.nome}</h2>
                                     <p className="text-xs text-slate-500 mt-0.5">
-                                        CPF: {selectedAthlete.cpf} · {selectedAthlete.distancia} ({selectedAthlete.cidadeUf})
+                                        CPF: <span className="semi-bold text-slate-900">{selectedAthlete.cpf}</span>
                                     </p>
                                 </div>
                             </div>
                             <button
-                                onClick={() => setShowDeliveryModal(false)}
+                                onClick={closeDeliveryModal}
                                 className="text-slate-400 hover:text-slate-600 p-1"
                             >
                                 <X className="h-6 w-6" />
@@ -803,7 +1115,7 @@ export function DeliveryShell() {
                         </div>
 
                         {/* Status Atual do Atleta */}
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                        {/* <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
                             <span className="text-slate-500 font-medium">STATUS:</span>
                             {selectedAthlete.status === "ENTREGUE" && (
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
@@ -817,35 +1129,40 @@ export function DeliveryShell() {
                             )}
                             {selectedAthlete.status === "PENDENTE" && (
                                 <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-600">
-                                    ● AGUARDANDO RETIRADA
+                                    ● DISPONÍVEL
                                 </span>
                             )}
-                        </div>
+                        </div> */}
 
                         {/* Ficha Resumida */}
-                        <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
-                            <div>
-                                <span className="text-slate-400 block">Camiseta:</span>
-                                <span className="font-black text-blue-600 text-base">{selectedAthlete.camiseta}</span>
+                        {/* <div className="flex flex-nowrap md:flex-wrap justify-center gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs"> */}
+                        <div className="grid grid-cols-2 gap-3 rounded-2xl justify-items-center border border-slate-200 bg-slate-50 p-4 text-xs md:grid-cols-3 lg:grid-cols-5">
+                            <div className="w-25 text-center">
+                                <span className="text-slate-400 block center">Modalidade:</span>
+                                <span className="text-slate-800">{selectedAthlete.distancia}</span>
                             </div>
-                            <div>
-                                <span className="text-slate-400 block">Equipe:</span>
-                                <span className="font-bold text-slate-800">{selectedAthlete.equipe}</span>
+                            <div className="w-25 text-center">
+                                <span className="text-slate-400 block center">Camiseta:</span>
+                                <span className="text-slate-800">{selectedAthlete.camiseta}</span>
                             </div>
-                            <div>
-                                <span className="text-slate-400 block">Tipo do Kit:</span>
-                                <span className="font-semibold text-slate-800">{selectedAthlete.kit}</span>
+                            <div className="w-25 text-center">
+                                <span className="text-slate-400 block center">Equipe:</span>
+                                <span className="text-slate-800">{selectedAthlete.equipe}</span>
                             </div>
-                            <div>
-                                <span className="text-slate-400 block">Faixa Etária:</span>
-                                <span className="font-semibold text-slate-800">{selectedAthlete.faixaEtaria}</span>
+                            <div className="w-25 text-center">
+                                <span className="text-slate-400 block center">Tipo do Kit:</span>
+                                <span className="text-slate-800">{selectedAthlete.kit}</span>
+                            </div>
+                            <div className="w-25 text-center">
+                                <span className="text-slate-400 block center">Faixa etária:</span>
+                                <span className="text-slate-800">{selectedAthlete.faixaEtaria}</span>
                             </div>
                         </div>
 
                         {selectedAthlete.alerta && (
                             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center gap-2">
                                 <ShieldAlert className="h-4 w-4 text-amber-700 shrink-0" />
-                                <span>Alerta: {selectedAthlete.alerta}</span>
+                                <span>{selectedAthlete.alerta}</span>
                             </div>
                         )}
 
@@ -862,7 +1179,7 @@ export function DeliveryShell() {
                                         }`}
                                     >
                                         <span className="text-sm font-semibold text-slate-900 block">O próprio atleta</span>
-                                        <span className="text-xs text-slate-500">Retirada pessoalmente</span>
+                                        {/* <span className="text-xs text-slate-500">Retirada pessoalmente</span> */}
                                     </button>
 
                                     <button
@@ -873,7 +1190,7 @@ export function DeliveryShell() {
                                         }`}
                                     >
                                         <span className="text-sm font-semibold text-slate-900 block">Terceiro / Responsável</span>
-                                        <span className="text-xs text-slate-500">Retirada por representante</span>
+                                        {/* <span className="text-xs text-slate-500">Retirada por representante</span> */}
                                     </button>
                                 </div>
 
@@ -906,7 +1223,10 @@ export function DeliveryShell() {
                         <div className="pt-3 border-t border-slate-100 space-y-3">
                             {selectedAthlete.status === "PENDENTE" && (
                                 <Button
-                                    onClick={handleDeliverKit}
+                                    onClick={(event) => {
+                                        event.preventDefault();
+                                        handleDeliverKit();
+                                    }}
                                     size="lg"
                                     className="h-14 w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-base shadow-sm"
                                 >
@@ -927,16 +1247,16 @@ export function DeliveryShell() {
                             <div className="flex gap-2">
                                 <Button
                                     variant="outline"
-                                    onClick={showAthleteOnSecondScreen}
+                                    onClick={() => showAthleteOnSecondScreen()}
                                     className="flex-1 rounded-xl text-indigo-700 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-xs font-semibold"
                                 >
-                                    <Monitor className="h-4 w-4 mr-1.5" /> Exibir na Segunda Tela
+                                    <Monitor className="h-4 w-4 mr-1.5" />Espelhar
                                 </Button>
 
                                 <Button
                                     variant="outline"
                                     onClick={() => {
-                                        setShowDeliveryModal(false);
+                                        closeDeliveryModal();
                                         setEditingAthlete(selectedAthlete);
                                         setShowEditAthleteModal(true);
                                     }}
@@ -965,11 +1285,11 @@ export function DeliveryShell() {
                         </div>
 
                         <div className="space-y-4 text-xs">
-                            <p className="text-slate-500">Defina os filtros desejados para o sorteio ou escolha "TODOS" para sorteio geral.</p>
+                            {/* <p className="text-slate-500">Defina os filtros desejados para o sorteio ou escolha "TODOS" para sorteio geral.</p> */}
 
                             <div className="grid grid-cols-3 gap-3">
                                 <div>
-                                    <label className="font-semibold text-slate-700 block mb-1">Distância/Cat.</label>
+                                    <label className="font-semibold text-slate-700 block mb-1">Modalidade/Cat.</label>
                                     <select
                                         value={raffleFilterCategory}
                                         onChange={(e) => setRaffleFilterCategory(e.target.value)}
@@ -1022,7 +1342,7 @@ export function DeliveryShell() {
                                 <p className="text-xs uppercase tracking-wider font-bold text-amber-100">Ganhador do Sorteio!</p>
                                 <h4 className="text-2xl font-black text-slate-900">{raffleWinner.nome}</h4>
                                 <p className="text-sm font-semibold text-slate-800">
-                                    Nº #{raffleWinner.num} · Equipe: {raffleWinner.equipe} ({raffleWinner.cidadeUf})
+                                    Nº {raffleWinner.num} · Equipe: {raffleWinner.equipe} ({raffleWinner.cidadeUf})
                                 </p>
                             </div>
                         )}
@@ -1083,17 +1403,7 @@ export function DeliveryShell() {
                             </div>
 
                             <div>
-                                <label className="font-semibold text-slate-700 block mb-1">Número de Peito (NUM)</label>
-                                <input
-                                    value={editingAthlete.num}
-                                    onChange={(e) => setEditingAthlete({ ...editingAthlete, num: e.target.value })}
-                                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-xs font-bold"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="font-semibold text-slate-700 block mb-1">Distância/Modalidade</label>
+                                <label className="font-semibold text-slate-700 block mb-1">Modalidade</label>
                                 <input
                                     value={editingAthlete.distancia}
                                     onChange={(e) => setEditingAthlete({ ...editingAthlete, distancia: e.target.value })}
@@ -1101,8 +1411,26 @@ export function DeliveryShell() {
                                 />
                             </div>
 
-                            <div className="sm:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
-                                <label className="font-semibold text-slate-700 block">Equipe / Assessoria</label>
+                            <div>
+                                <label className="font-semibold text-slate-700 block mb-1">Faixa Etária</label>
+                                <input
+                                    value={editingAthlete.faixaEtaria}
+                                    onChange={(e) => setEditingAthlete({ ...editingAthlete, faixaEtaria: e.target.value })}
+                                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-xs"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="font-semibold text-slate-700 block mb-1">Equipe</label>
+                                <input
+                                    value={editingAthlete.equipe}
+                                    onChange={(e) => setEditingAthlete({ ...editingAthlete, equipe: e.target.value })}
+                                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-xs"
+                                />
+                            </div>
+
+                            {/* <div className="sm:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                                <label className="font-semibold text-slate-700 block">Equipe</label>
                                 <div className="flex gap-2">
                                     <select
                                         value={existingTeams.includes(editingAthlete.equipe) ? editingAthlete.equipe : "NOVA"}
@@ -1127,7 +1455,7 @@ export function DeliveryShell() {
                                     placeholder="Digite o nome da equipe..."
                                     className="h-10 w-full rounded-lg border border-slate-300 px-3 text-xs bg-white"
                                 />
-                            </div>
+                            </div> */}
 
                             <div>
                                 <label className="font-semibold text-slate-700 block mb-1">Camiseta</label>
@@ -1197,28 +1525,191 @@ export function DeliveryShell() {
                 </div>
             )}
 
-            {/* MODAL: CONFIRMAÇÃO DE RESET GERAL */}
             {showResetModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
-                        <div className="flex items-center gap-3 text-rose-600">
-                            <AlertTriangle className="h-6 w-6" />
-                            <h3 className="text-lg font-bold text-slate-900">Zerar Alterações e Entregas?</h3>
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="reset-deliveries-title"
+                >
+                    <div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+                        {/* Cabeçalho do modal */}
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600">
+                                <AlertTriangle className="h-5 w-5" />
+                            </div>
+
+                            <div>
+                                <h3 id="reset-deliveries-title" className="text-lg font-bold text-slate-900">
+                                    Zerar alterações e entregas?
+                                </h3>
+
+
+
+                                <p className="mt-1 text-sm leading-relaxed text-slate-500">
+                                    <label htmlFor="reset-confirmation" className="text-sm font-medium text-slate-500">
+                                        Digite{" "}
+                                        <span className="font-bold text-slate-900">
+                                            {confirmationPhrase}
+                                        </span>{" "}
+                                        para confirmar
+                                    </label>
+                                </p>
+                            </div>
                         </div>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                            Esta ação irá resetar o status de todas as entregas de kits para <strong>PENDENTE</strong> e limpar os históricos de estorno e horários.
-                        </p>
-                        <div className="flex justify-end gap-2 pt-2">
-                            <Button variant="outline" onClick={() => setShowResetModal(false)} className="rounded-xl">
+
+                        {/* Campo de confirmação */}
+                        <div className="space-y-2">
+                            <input
+                                id="reset-confirmation"
+                                name="reset-deliveries-confirmation"
+                                type="text"
+                                value={resetConfirmation}
+                                onChange={(event) => {
+                                    setResetConfirmation(event.target.value);
+                                }}
+                                placeholder={confirmationPhrase}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="characters"
+                                spellCheck={false}
+                                aria-describedby="reset-confirmation-help"
+                                className="
+                                    h-11
+                                    w-full
+                                    rounded-xl
+                                    border
+                                    border-slate-300
+                                    px-4
+                                    text-sm
+                                    font-semibold
+                                    uppercase
+                                    outline-none
+                                    transition
+                                    placeholder:text-slate-400
+                                    focus:border-rose-500
+                                    focus:ring-2
+                                    focus:ring-rose-500/20
+                                "
+                            />
+                        </div>
+                            
+                        {/* Ações */}
+                        <div className="flex flex-col-reverse justify-center gap-2 pt-2 sm:flex-row">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                    setResetConfirmation("");
+                                    setShowResetModal(false);
+                                }}
+                                className="w-full rounded-xl sm:w-auto"
+                            >
                                 Cancelar
                             </Button>
-                            <Button onClick={handleResetAllDeliveries} className="rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold">
-                                Sim, Zerar Tudo
+                            
+                            <Button
+                                type="button"
+                                disabled={!canResetDeliveries}
+                                onClick={() => {
+                                    if (!canResetDeliveries) return;
+                                
+                                    handleResetAllDeliveries();
+                                    setResetConfirmation("");
+                                    setShowResetModal(false);
+                                }}
+                                className="
+                                    w-full
+                                    rounded-xl
+                                    bg-rose-600
+                                    font-bold
+                                    text-white
+                                    hover:bg-rose-700
+                                    disabled:cursor-not-allowed
+                                    disabled:opacity-50
+                                    sm:w-auto
+                                "
+                            >
+                                Sim, zerar tudo
                             </Button>
                         </div>
                     </div>
                 </div>
             )}
-        </div>
+
+            {showPinModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                    <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+                        <div className="text-center">
+                            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                                <KeyRound className="h-6 w-6" />
+                            </div>
+                        
+                            {/* <h3 className="mt-4 text-lg font-bold text-slate-900">
+                                Identificar atleta
+                            </h3> */}
+                        
+                            <p className="mt-4 text-sm text-slate-500">
+                                Informe o código PIN
+                            </p>
+                        </div>
+                        
+                        <div className="mt-5 space-y-2">
+                            <input
+                                type="text"
+                                inputMode="numeric"
+                                maxLength={6}
+                                value={pin}
+                                onChange={(e) => {
+                                    setPin(e.target.value.replace(/\D/g, ""));
+                                    if (pinError) setPinError("");
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        handlePinSearch();
+                                    }
+                                }}
+                                placeholder="0000"
+                                autoFocus
+                                aria-invalid={!!pinError}
+                                className={`h-12 w-full rounded-xl border px-4 text-center text-lg font-bold tracking-[0.35em] outline-none transition focus:ring-2 ${
+                                    pinError
+                                        ? "border-rose-400 bg-rose-50 text-rose-900 focus:border-rose-500 focus:ring-rose-100"
+                                        : "border-slate-300 bg-white focus:border-amber-500 focus:ring-amber-100"
+                                }`}
+                            />
+
+                            {pinError && (
+                                <p className="text-center text-sm font-medium text-rose-600">
+                                    {pinError}
+                                </p>
+                            )}
+                        </div>
+            
+                        <div className="mt-5 flex justify-end gap-2">
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setShowPinModal(false);
+                                    setPin("");
+                                    setPinError("");
+                                }}
+                                className="rounded-xl"
+                            >
+                                Cancelar
+                            </Button>
+                            
+                            <Button
+                                onClick={handlePinSearch}
+                                disabled={!pin.trim()}
+                                className="rounded-xl bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50"
+                            >
+                                Continuar
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div> 
     );
 }

@@ -1,8 +1,8 @@
 {
-  "name": "SportDelivery",
-  "short_name": "SportDelivery",
+  "name": "RS KITS",
+  "short_name": "RS KITS",
   "description": "Entrega de kits offline-first para eventos esportivos",
-  "start_url": "/login",
+  "start_url": "/dashboard",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#2563eb",

@@ -1,33 +1,18 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useMemo } from "react";
 import {
     Activity,
     BarChart3,
-    Calendar,
-    ChevronDown,
     Download,
     FileSpreadsheet,
-    FileText,
-    Filter,
-    Layers,
-    LogOut,
-    MapPin,
     PieChart,
     Printer,
-    RefreshCw,
-    RotateCcw,
-    Search,
-    ShieldAlert,
-    Users,
-    Wifi,
-    WifiOff,
+    Upload,
 } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { clearAuth, getUser, type AuthUser } from "@/services/auth.service";
 
 export interface AuditLogItem {
     id: string;
@@ -71,6 +56,80 @@ export interface AthleteReportRecord {
     foiAlterado: boolean;
     camposAlterados?: string[];
 }
+
+type ReportFieldKey =
+    | "num" | "nomeAtleta" | "kit" | "distancia" | "faixaEtaria" | "categoriaEspecial"
+    | "nascimento" | "sexo" | "equipe" | "cidadeUf" | "camiseta" | "cpfAtleta"
+    | "cel" | "email" | "retirarKit" | "notas" | "obs1" | "obs2" | "alerta"
+    | "nomeEvento" | "statusEntrega" | "dataEntrega" | "usuarioEntrega" | "obsEntrega"
+    | "dataEstorno" | "usuarioEstorno";
+
+type ReportField = { key: ReportFieldKey; label: string };
+export type AthleteUpdate = {
+    athleteNum: string;
+    athleteCpf: string;
+    fields: Array<{ field: ReportFieldKey; before: string; after: string }>;
+};
+
+export interface ReportShellProps {
+    /** Substitua os dados demonstrativos pelos atletas carregados da API. */
+    initialAthletes?: AthleteReportRecord[];
+    /** Ponto de integração para persistir as alterações na API quando ela estiver disponível. */
+    onApplyAthleteUpdates?: (updates: AthleteUpdate[]) => void | Promise<void>;
+}
+
+const REPORT_FIELDS: ReportField[] = [
+    { key: "num", label: "NUM" }, { key: "nomeAtleta", label: "Nome Atleta" },
+    { key: "kit", label: "KIT" }, { key: "distancia", label: "Modalidade" },
+    { key: "faixaEtaria", label: "Faixa Etária" }, { key: "categoriaEspecial", label: "Categoria Especial" },
+    { key: "nascimento", label: "Nascimento" }, { key: "sexo", label: "Sexo" },
+    { key: "equipe", label: "Equipe" }, { key: "cidadeUf", label: "Cidade / UF" },
+    { key: "camiseta", label: "Camiseta" }, { key: "cpfAtleta", label: "CPF Atleta" },
+    { key: "cel", label: "Celular" }, { key: "email", label: "E-mail" },
+    { key: "retirarKit", label: "Retirar KIT" }, { key: "notas", label: "Notas" },
+    { key: "obs1", label: "Obs1" }, { key: "obs2", label: "Obs2" },
+    { key: "alerta", label: "Alerta" }, { key: "nomeEvento", label: "Nome Evento" },
+    { key: "statusEntrega", label: "Status da Entrega" }, { key: "dataEntrega", label: "Data Entrega" },
+    { key: "usuarioEntrega", label: "Usuário Entrega" }, { key: "obsEntrega", label: "Obs. Entrega" },
+    { key: "dataEstorno", label: "Data Estorno" }, { key: "usuarioEstorno", label: "Usuário Estorno" },
+];
+
+const UPDATE_MODEL_FIELD_KEYS: ReportFieldKey[] = [
+    "num", "nomeAtleta", "distancia", "nascimento", "sexo", "equipe", "cidadeUf", "camiseta", "cpfAtleta", "cel", "notas",
+];
+
+const getReportFieldValue = (athlete: AthleteReportRecord, key: ReportFieldKey) => String(athlete[key] ?? "");
+
+const normalizeColumnName = (value: string) => value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const parseCsvLine = (line: string, delimiter: string) => {
+    const values: string[] = [];
+    let value = "";
+    let quoted = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+        const character = line[index];
+        if (character === '"') {
+            if (quoted && line[index + 1] === '"') {
+                value += '"';
+                index += 1;
+            } else {
+                quoted = !quoted;
+            }
+        } else if (character === delimiter && !quoted) {
+            values.push(value.trim());
+            value = "";
+        } else {
+            value += character;
+        }
+    }
+    values.push(value.trim());
+    return values;
+};
 
 const MOCK_AUDIT_LOGS: AuditLogItem[] = [
     {
@@ -330,13 +389,9 @@ const MOCK_ATHLETES_REPORT: AthleteReportRecord[] = [
     },
 ];
 
-export function ReportShell() {
-    const router = useRouter();
-    const [user, setUser] = useState<AuthUser | null>(null);
-    const [online, setOnline] = useState(true);
-
+export function ReportShell({ initialAthletes, onApplyAthleteUpdates }: ReportShellProps) {
     // Abas Principais
-    const [activeTab, setActiveTab] = useState<"ALTERACOES" | "DINAMICO">("ALTERACOES");
+    const [activeTab, setActiveTab] = useState<"ALTERACOES" | "MODELO_ATUALIZACAO" | "RELACAO_ENTREGA">("ALTERACOES");
     const [subTabAlteracoes, setSubTabAlteracoes] = useState<
         "ESTATICO" | "AGRUPADO" | "LINHAS_AMARELO" | "MODELO_EXPORT" | "FULL"
     >("ESTATICO");
@@ -351,15 +406,20 @@ export function ReportShell() {
     const [filterCamiseta, setFilterCamiseta] = useState("TODOS");
     const [filterFaixaEtaria, setFilterFaixaEtaria] = useState("TODOS");
 
-    useEffect(() => {
-        const current = getUser();
-        if (!current) {
-            router.replace("/login");
-            return;
-        }
-        setUser(current);
-        setOnline(navigator.onLine);
-    }, [router]);
+    // Modelo de atualização (de/para): somente atletas com alterações.
+    const [updateModelFields, setUpdateModelFields] = useState<ReportFieldKey[]>(UPDATE_MODEL_FIELD_KEYS);
+    const [updateModelHeaders, setUpdateModelHeaders] = useState<Record<ReportFieldKey, string>>(() =>
+        Object.fromEntries(REPORT_FIELDS.map((field) => [field.key, field.label])) as Record<ReportFieldKey, string>,
+    );
+    const [reportAthletes, setReportAthletes] = useState<AthleteReportRecord[]>(() => initialAthletes ?? MOCK_ATHLETES_REPORT);
+    const [importSummary, setImportSummary] = useState<{ updated: number; unchanged: number; notFound: number; fieldsChanged: number } | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+
+    // Relação de entrega: o operador define as colunas que farão parte da planilha final.
+    const [deliveryRelationFields, setDeliveryRelationFields] = useState<ReportFieldKey[]>([
+        "num", "nomeAtleta", "distancia", "kit", "camiseta", "retirarKit", "statusEntrega", "dataEntrega",
+    ]);
+    const [isDeliveryRelationGenerated, setIsDeliveryRelationGenerated] = useState(false);
 
     // Dados filtrados dinamicamente
     const filteredAthletes = useMemo(() => {
@@ -465,14 +525,6 @@ export function ReportShell() {
         ];
     }, []);
 
-    if (!user) {
-        return (
-            <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500">
-                Carregando relatórios...
-            </div>
-        );
-    }
-
     // Função de Exportação CSV/Excel em UTF-8 com BOM
     const downloadCSV = (filename: string, headers: string[], rows: (string | undefined)[][]) => {
         const bom = "\uFEFF";
@@ -487,6 +539,124 @@ export function ReportShell() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    };
+
+    const toggleField = (
+        field: ReportFieldKey,
+        fields: ReportFieldKey[],
+        setFields: (fields: ReportFieldKey[]) => void,
+    ) => {
+        setFields(fields.includes(field) ? fields.filter((item) => item !== field) : [...fields, field]);
+    };
+
+    const exportUpdateModel = () => {
+        const changedAthletes = reportAthletes.filter((athlete) => athlete.foiAlterado);
+        downloadCSV(
+            "Modelo_Atualizacao_Atletas.csv",
+            updateModelFields.map((field) => updateModelHeaders[field] || REPORT_FIELDS.find((item) => item.key === field)?.label || field),
+            changedAthletes.map((athlete) => updateModelFields.map((field) => {
+                const isIdentifier = field === "num" || field === "cpfAtleta";
+                return isIdentifier || athlete.camposAlterados?.includes(field)
+                    ? getReportFieldValue(athlete, field)
+                    : "";
+            })),
+        );
+    };
+
+    const importAthleteUpdates = async (file: File) => {
+        setIsImporting(true);
+        setImportSummary(null);
+
+        try {
+            const content = (await file.text()).replace(/^\uFEFF/, "");
+            const lines = content.split(/\r?\n/).filter((line) => line.trim());
+            if (lines.length < 2) throw new Error("A planilha precisa conter cabeçalho e ao menos uma atualização.");
+
+            const delimiter = lines[0].includes(";") ? ";" : ",";
+            const headers = parseCsvLine(lines[0], delimiter);
+            const aliases = new Map<string, ReportFieldKey>();
+            REPORT_FIELDS.forEach((field) => {
+                aliases.set(normalizeColumnName(field.label), field.key);
+                aliases.set(normalizeColumnName(updateModelHeaders[field.key]), field.key);
+            });
+            aliases.set("numero", "num");
+            aliases.set("numerodoatleta", "num");
+            aliases.set("cpf", "cpfAtleta");
+            aliases.set("cpfdoatleta", "cpfAtleta");
+
+            const columnFields = headers.map((header) => aliases.get(normalizeColumnName(header)));
+            if (!columnFields.includes("num") && !columnFields.includes("cpfAtleta")) {
+                throw new Error("Inclua a coluna NUM ou CPF Atleta para identificar cada atleta.");
+            }
+
+            const updates: AthleteUpdate[] = [];
+            let unchanged = 0;
+            let notFound = 0;
+            let fieldsChanged = 0;
+            const normalizeCpf = (value: string) => value.replace(/\D/g, "");
+            const next = reportAthletes.map((athlete) => ({ ...athlete }));
+
+            lines.slice(1).forEach((line) => {
+                    const cells = parseCsvLine(line, delimiter);
+                    const incoming = new Map<ReportFieldKey, string>();
+                    columnFields.forEach((field, index) => {
+                        const value = cells[index]?.trim();
+                        if (field && value) incoming.set(field, value);
+                    });
+
+                    const num = incoming.get("num");
+                    const cpf = incoming.get("cpfAtleta");
+                    const athleteIndex = next.findIndex((athlete) =>
+                        (num && athlete.num === num) || (cpf && normalizeCpf(athlete.cpfAtleta) === normalizeCpf(cpf)),
+                    );
+                    if (athleteIndex < 0) {
+                        notFound += 1;
+                        return;
+                    }
+
+                    const athlete = next[athleteIndex];
+                    const fieldUpdates: AthleteUpdate["fields"] = [];
+                    incoming.forEach((after, field) => {
+                        if (field === "num" || field === "cpfAtleta") return;
+                        const before = getReportFieldValue(athlete, field);
+                        if (before !== after) fieldUpdates.push({ field, before, after });
+                    });
+
+                    if (!fieldUpdates.length) {
+                        unchanged += 1;
+                        return;
+                    }
+
+                    const updatedAthlete = fieldUpdates.reduce(
+                        (result, change) => ({ ...result, [change.field]: change.after }),
+                        athlete,
+                    ) as AthleteReportRecord;
+                    next[athleteIndex] = {
+                        ...updatedAthlete,
+                        foiAlterado: true,
+                        camposAlterados: Array.from(new Set([...(athlete.camposAlterados ?? []), ...fieldUpdates.map((change) => change.field)])),
+                    };
+                    fieldsChanged += fieldUpdates.length;
+                    updates.push({ athleteNum: athlete.num, athleteCpf: athlete.cpfAtleta, fields: fieldUpdates });
+            });
+            setReportAthletes(next);
+
+            setImportSummary({ updated: updates.length, unchanged, notFound, fieldsChanged });
+            await onApplyAthleteUpdates?.(updates);
+        } catch (error) {
+            setImportSummary({ updated: 0, unchanged: 0, notFound: 0, fieldsChanged: 0 });
+            window.alert(error instanceof Error ? error.message : "Não foi possível importar a planilha.");
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const exportDeliveryRelation = () => {
+        downloadCSV(
+            "Relacao_de_Entrega.csv",
+            deliveryRelationFields.map((field) => REPORT_FIELDS.find((item) => item.key === field)?.label || field),
+            reportAthletes.map((athlete) => deliveryRelationFields.map((field) => getReportFieldValue(athlete, field))),
+        );
     };
 
     // Handler de Exportação do Relatório Selecionado
@@ -542,59 +712,41 @@ export function ReportShell() {
             <header className="sticky top-0 z-20 border-b border-slate-200/80 bg-white/95 backdrop-blur lg:ml-64">
                 <div className="flex flex-col gap-3 p-4 sm:px-6 lg:px-8 xl:flex-row xl:items-center xl:justify-between">
                     <div>
-                        <p className="text-xs font-medium uppercase tracking-wider text-slate-400">Módulo de Business Intelligence</p>
-                        <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                            <BarChart3 className="h-5 w-5 text-blue-600" /> Relatórios & Auditoria do Evento
+                        <p className="text-xs font-medium uppercase tracking-wider text-slate-400"></p>
+                        <h1 className="text-xl font-medium text-slate-900 flex items-center gap-2">
+                            <BarChart3 className="h-5 w-5 text-blue-600" /> Relatórios
                         </h1>
                         <p className="text-xs text-slate-500">Maratona Internacional 2027 · São Paulo, SP</p>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                        {/* <span
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                                online ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                            }`}
-                        >
-                            {online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
-                            {online ? "Online" : "Offline"}
-                        </span> */}
-
-                        <div className="hidden text-right sm:block">
-                            <p className="text-sm font-semibold">{user.name}</p>
-                        </div>
-
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                                clearAuth();
-                                router.push("/login");
-                            }}
-                        >
-                            <LogOut className="h-4 w-4" /> Sair
-                        </Button>
                     </div>
                 </div>
             </header>
 
             <main className="p-4 sm:p-6 lg:ml-64 lg:p-8 space-y-6">
                 {/* Seletor da Aba Principal */}
-                <div className="flex rounded-2xl bg-slate-200/80 p-1.5 max-w-xl">
+                <div className="flex max-w-full flex-wrap rounded-2xl bg-slate-200/80 p-1.5">
                     <button
                         onClick={() => setActiveTab("ALTERACOES")}
-                        className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold transition ${
+                        className={`flex-none flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[11px] sm:text-xs font-medium transition ${
                             activeTab === "ALTERACOES" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
                         }`}
                     >
                         <Activity className="h-4 w-4" /> Relatórios de Alterações & Auditoria
                     </button>
                     <button
-                        onClick={() => setActiveTab("DINAMICO")}
-                        className={`flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-xs font-bold transition ${
-                            activeTab === "DINAMICO" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                        onClick={() => setActiveTab("MODELO_ATUALIZACAO")}
+                        className={`flex-none flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[11px] sm:text-xs font-medium transition ${
+                            activeTab === "MODELO_ATUALIZACAO" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
                         }`}
                     >
-                        <PieChart className="h-4 w-4" /> Relatórios & Estátisticas
+                        <FileSpreadsheet className="h-4 w-4" /> Excel Modelo e Exportação
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("RELACAO_ENTREGA")}
+                        className={`flex-none flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[11px] sm:text-xs font-medium transition ${
+                            activeTab === "RELACAO_ENTREGA" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                    >
+                        <Download className="h-4 w-4" /> Relação de Entrega
                     </button>
                 </div>
 
@@ -607,31 +759,15 @@ export function ReportShell() {
                                 size="sm"
                                 variant={subTabAlteracoes === "ESTATICO" ? "default" : "outline"}
                                 onClick={() => setSubTabAlteracoes("ESTATICO")}
-                                className="rounded-xl text-xs font-semibold"
+                                className="rounded-xl text-xs font-medium"
                             >
-                                Alterações - Estático (Histórico Recente)
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant={subTabAlteracoes === "AGRUPADO" ? "default" : "outline"}
-                                onClick={() => setSubTabAlteracoes("AGRUPADO")}
-                                className="rounded-xl text-xs font-semibold"
-                            >
-                                Excel - Agrupado
-                            </Button>
-                            <Button
-                                size="sm"
-                                variant={subTabAlteracoes === "LINHAS_AMARELO" ? "default" : "outline"}
-                                onClick={() => setSubTabAlteracoes("LINHAS_AMARELO")}
-                                className="rounded-xl text-xs font-semibold bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100"
-                            >
-                                Excel - Linhas/Amarelo
+                                Relatório Analítico
                             </Button>
                             <Button
                                 size="sm"
                                 variant={subTabAlteracoes === "MODELO_EXPORT" ? "default" : "outline"}
                                 onClick={() => setSubTabAlteracoes("MODELO_EXPORT")}
-                                className="rounded-xl text-xs font-semibold"
+                                className="rounded-xl text-xs font-medium"
                             >
                                 Excel - Modelo Exportação
                             </Button>
@@ -639,7 +775,7 @@ export function ReportShell() {
                                 size="sm"
                                 variant={subTabAlteracoes === "FULL" ? "default" : "outline"}
                                 onClick={() => setSubTabAlteracoes("FULL")}
-                                className="rounded-xl text-xs font-semibold bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
+                                className="rounded-xl text-xs font-medium bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100"
                             >
                                 Excel - Dados Full
                             </Button>
@@ -650,14 +786,13 @@ export function ReportShell() {
                             <Card className="border-slate-200 p-5 shadow-none space-y-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div>
-                                        <h3 className="text-base font-bold text-slate-900">Histórico Estático de Alterações Recentes</h3>
-                                        <p className="text-xs text-slate-500">Log de auditoria do sistema em tempo real.</p>
+                                        <h3 className="text-base font-medium text-slate-900">Histórico Estático de Alterações Recentes</h3>
                                     </div>
                                     <div className="flex gap-2">
                                         <Button
                                             size="sm"
                                             onClick={() => handleExportReport("AGRUPADO")}
-                                            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold"
+                                            className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-medium"
                                         >
                                             <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Exportar para Excel/CSV
                                         </Button>
@@ -665,7 +800,7 @@ export function ReportShell() {
                                             size="sm"
                                             variant="outline"
                                             onClick={() => window.print()}
-                                            className="rounded-xl text-xs font-semibold"
+                                            className="rounded-xl text-xs font-medium"
                                         >
                                             <Printer className="h-4 w-4 mr-1.5" /> Imprimir / PDF
                                         </Button>
@@ -674,7 +809,7 @@ export function ReportShell() {
 
                                 <div className="overflow-x-auto rounded-xl border border-slate-200">
                                     <table className="w-full text-left text-xs text-slate-700">
-                                        <thead className="bg-slate-100 font-bold uppercase tracking-wider text-slate-600 border-b border-slate-200">
+                                        <thead className="bg-slate-100 font-medium uppercase tracking-wider text-slate-600 border-b border-slate-200">
                                             <tr>
                                                 <th className="p-3">Data / Hora</th>
                                                 <th className="p-3">Usuário</th>
@@ -683,20 +818,18 @@ export function ReportShell() {
                                                 <th className="p-3">Campo Alterado</th>
                                                 <th className="p-3">Antes</th>
                                                 <th className="p-3">Depois</th>
-                                                <th className="p-3">Estação / IP</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 bg-white">
                                             {MOCK_AUDIT_LOGS.map((log) => (
                                                 <tr key={log.id} className="hover:bg-slate-50">
                                                     <td className="p-3 font-mono text-slate-500">{log.timestamp}</td>
-                                                    <td className="p-3 font-semibold text-slate-800">{log.usuario}</td>
-                                                    <td className="p-3 font-bold text-slate-900">#{log.numAtleta}</td>
+                                                    <td className="p-3 font-medium text-slate-800">{log.usuario}</td>
+                                                    <td className="p-3 font-medium text-slate-900">{log.numAtleta}</td>
                                                     <td className="p-3 font-medium">{log.nomeAtleta}</td>
-                                                    <td className="p-3 text-blue-600 font-semibold">{log.campoAlterado}</td>
+                                                    <td className="p-3 text-blue-600 font-medium">{log.campoAlterado}</td>
                                                     <td className="p-3 text-rose-600 line-through bg-rose-50/50 rounded">{log.valorAnterior}</td>
-                                                    <td className="p-3 text-emerald-700 font-bold bg-emerald-50/50 rounded">{log.valorNovo}</td>
-                                                    <td className="p-3 text-slate-400 text-[11px]">{log.ipOuDispositivo}</td>
+                                                    <td className="p-3 text-emerald-700 font-medium bg-emerald-50/50 rounded">{log.valorNovo}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -704,160 +837,18 @@ export function ReportShell() {
                                 </div>
                             </Card>
                         )}
-
-                        {/* SUB-ABA 1.2: AGRUPADO */}
-                        {subTabAlteracoes === "AGRUPADO" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <div>
-                                        <h3 className="text-base font-bold text-slate-900">Relatório Agrupado por Operador e Data</h3>
-                                        <p className="text-xs text-slate-500">Exibição analítica de alterações consolidadas por usuário.</p>
-                                    </div>
-                                    <Button
-                                        size="sm"
-                                        onClick={() => handleExportReport("AGRUPADO")}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold"
-                                    >
-                                        <Download className="h-4 w-4 mr-1.5" /> Baixar Planilha Agrupada (Excel)
-                                    </Button>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                                        <h4 className="font-bold text-xs text-slate-800 uppercase mb-2">Operador: Carlos Operador (2 Alterações)</h4>
-                                        <ul className="text-xs space-y-2 text-slate-700">
-                                            <li className="flex items-center justify-between p-2 bg-white rounded border border-slate-100">
-                                                <span>Atleta #1455 - João Carlos (Tamanho da Camiseta)</span>
-                                                <span className="font-mono text-slate-400">04/08 10:30</span>
-                                            </li>
-                                            <li className="flex items-center justify-between p-2 bg-white rounded border border-slate-100">
-                                                <span>Atleta #1458 - Ana Beatriz (Equipe / Assessoria)</span>
-                                                <span className="font-mono text-slate-400">04/08 10:12</span>
-                                            </li>
-                                        </ul>
-                                    </div>
-
-                                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
-                                        <h4 className="font-bold text-xs text-slate-800 uppercase mb-2">Operador: Supervisão Ana (1 Alteração)</h4>
-                                        <ul className="text-xs space-y-2 text-slate-700">
-                                            <li className="flex items-center justify-between p-2 bg-white rounded border border-slate-100">
-                                                <span>Atleta #1457 - Maria Costa (Estorno de Kit)</span>
-                                                <span className="font-mono text-slate-400">04/08 10:45</span>
-                                            </li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </Card>
-                        )}
-
-                        {/* SUB-ABA 1.3: LINHAS / AMARELO (DESTALHE DAS CÉLULAS ALTERADAS EM AMARELO) */}
-                        {subTabAlteracoes === "LINHAS_AMARELO" && (
-                            <Card className="border-amber-200 bg-amber-50/20 p-5 shadow-none space-y-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                    <div>
-                                        <h3 className="text-base font-bold text-amber-950 flex items-center gap-2">
-                                            <span className="h-3 w-3 rounded-full bg-amber-400 inline-block" /> Relatório de Alterações em Linhas (Destaque Amarelo)
-                                        </h3>
-                                        <p className="text-xs text-amber-800">
-                                            Nesta visualização, as informações alteradas no sistema são exibidas com fundo amarelo destacado.
-                                        </p>
-                                    </div>
-                                    <Button
-                                        size="sm"
-                                        onClick={() => handleExportReport("LINHAS_AMARELO")}
-                                        className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-semibold"
-                                    >
-                                        <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Baixar Excel (Com Amarelo)
-                                    </Button>
-                                </div>
-
-                                <div className="max-h-[500px] overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white">
-                                    <table className="w-full text-left text-xs whitespace-nowrap">
-                                        <thead className="sticky top-0 bg-slate-100 font-bold uppercase text-slate-600 border-b border-slate-200">
-                                            <tr>
-                                                <th className="p-3">NUM</th>
-                                                <th className="p-3">Nome Atleta</th>
-                                                <th className="p-3">KIT</th>
-                                                <th className="p-3">Distância</th>
-                                                <th className="p-3">Faixa Etaria</th>
-                                                <th className="p-3">Categoria Especial</th>
-                                                <th className="p-3">Nascimento</th>
-                                                <th className="p-3">Sexo</th>
-                                                <th className="p-3">Equipe</th>
-                                                <th className="p-3">Cidade/UF</th>
-                                                <th className="p-3">Camiseta</th>
-                                                <th className="p-3">CPF Atleta</th>
-                                                <th className="p-3">Cel</th>
-                                                <th className="p-3">E-mail</th>
-                                                <th className="p-3">Retirar KIT</th>
-                                                <th className="p-3">Notas</th>
-                                                <th className="p-3">Alerta</th>
-                                                <th className="p-3">status_entrega</th>
-                                                <th className="p-3">data_entrega</th>
-                                                <th className="p-3">usuario_entrega</th>
-                                                <th className="p-3">data_estorno</th>
-                                                <th className="p-3">usuario_estorno</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {MOCK_ATHLETES_REPORT.map((athlete) => {
-                                                const rowIsYellow = athlete.foiAlterado;
-                                                const rowClass = rowIsYellow ? "bg-amber-100/80 text-amber-950 font-medium" : "hover:bg-slate-50 text-slate-700";
-
-                                                return (
-                                                    <tr key={athlete.num} className={rowClass}>
-                                                        <td className="p-3 font-bold">#{athlete.num}</td>
-                                                        <td className="p-3 font-semibold">{athlete.nomeAtleta}</td>
-                                                        <td className="p-3">{athlete.kit}</td>
-                                                        <td className="p-3">{athlete.distancia}</td>
-                                                        <td className="p-3">{athlete.faixaEtaria}</td>
-                                                        <td className="p-3">{athlete.categoriaEspecial}</td>
-                                                        <td className="p-3">{athlete.nascimento}</td>
-                                                        <td className="p-3">{athlete.sexo}</td>
-
-                                                        {/* Destacar a célula se o campo específico foi alterado */}
-                                                        <td className={`p-3 ${athlete.camposAlterados?.includes("equipe") ? "bg-amber-300 font-bold text-amber-950" : ""}`}>
-                                                            {athlete.equipe}
-                                                        </td>
-
-                                                        <td className="p-3">{athlete.cidadeUf}</td>
-
-                                                        <td className={`p-3 ${athlete.camposAlterados?.includes("camiseta") ? "bg-amber-300 font-bold text-amber-950" : ""}`}>
-                                                            {athlete.camiseta}
-                                                        </td>
-
-                                                        <td className="p-3">{athlete.cpfAtleta}</td>
-                                                        <td className="p-3">{athlete.cel}</td>
-                                                        <td className="p-3">{athlete.email}</td>
-                                                        <td className="p-3">{athlete.retirarKit}</td>
-                                                        <td className="p-3">{athlete.notas}</td>
-                                                        <td className="p-3">{athlete.alerta}</td>
-                                                        <td className="p-3 font-bold">{athlete.statusEntrega}</td>
-                                                        <td className="p-3 font-mono">{athlete.dataEntrega || "-"}</td>
-                                                        <td className="p-3">{athlete.usuarioEntrega || "-"}</td>
-                                                        <td className="p-3 font-mono">{athlete.dataEstorno || "-"}</td>
-                                                        <td className="p-3">{athlete.usuarioEstorno || "-"}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-                        )}
-
+                        
                         {/* SUB-ABA 1.4: MODELO EXPORTAÇÃO (APENAS ATLETAS ALTERADOS) */}
                         {subTabAlteracoes === "MODELO_EXPORT" && (
                             <Card className="border-slate-200 p-5 shadow-none space-y-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div>
-                                        <h3 className="text-base font-bold text-slate-900">Modelo Exportação (Apenas Atletas Alterados)</h3>
-                                        <p className="text-xs text-slate-500">Exibindo apenas cadastros que sofreram edições de dados.</p>
+                                        <h3 className="text-base font-medium text-slate-900">Modelo Exportação (Apenas Atletas Alterados)</h3>
                                     </div>
                                     <Button
                                         size="sm"
                                         onClick={() => handleExportReport("MODELO_EXPORT")}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold"
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-medium"
                                     >
                                         <FileSpreadsheet className="h-4 w-4 mr-1.5" /> Baixar Modelo Exportação
                                     </Button>
@@ -865,7 +856,7 @@ export function ReportShell() {
 
                                 <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                                     <table className="w-full text-left text-xs text-slate-700 whitespace-nowrap">
-                                        <thead className="bg-slate-100 font-bold uppercase text-slate-600 border-b border-slate-200">
+                                        <thead className="bg-slate-100 font-medium uppercase text-slate-600 border-b border-slate-200">
                                             <tr>
                                                 <th className="p-3">Num</th>
                                                 <th className="p-3">Nome atleta</th>
@@ -883,14 +874,14 @@ export function ReportShell() {
                                         <tbody className="divide-y divide-slate-100">
                                             {MOCK_ATHLETES_REPORT.filter((a) => a.foiAlterado).map((athlete) => (
                                                 <tr key={athlete.num} className="hover:bg-slate-50">
-                                                    <td className="p-3 font-bold">#{athlete.num}</td>
-                                                    <td className="p-3 font-semibold text-slate-900">{athlete.nomeAtleta}</td>
+                                                    <td className="p-3 font-medium">{athlete.num}</td>
+                                                    <td className="p-3 font-medium text-slate-900">{athlete.nomeAtleta}</td>
                                                     <td className="p-3">{athlete.distancia}</td>
                                                     <td className="p-3">{athlete.nascimento}</td>
                                                     <td className="p-3">{athlete.sexo}</td>
                                                     <td className="p-3">{athlete.equipe}</td>
                                                     <td className="p-3">{athlete.cidadeUf}</td>
-                                                    <td className="p-3 font-bold text-blue-600">{athlete.camiseta}</td>
+                                                    <td className="p-3 font-medium text-blue-600">{athlete.camiseta}</td>
                                                     <td className="p-3">{athlete.cpfAtleta}</td>
                                                     <td className="p-3">{athlete.cel}</td>
                                                     <td className="p-3 text-slate-500">{athlete.notas}</td>
@@ -907,13 +898,12 @@ export function ReportShell() {
                             <Card className="border-slate-200 p-5 shadow-none space-y-4">
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                     <div>
-                                        <h3 className="text-base font-bold text-slate-900">Relatório Dados Full (Exportação Completa)</h3>
-                                        <p className="text-xs text-slate-500">Todas as colunas e registros cadastrados no sistema.</p>
+                                        <h3 className="text-base font-medium text-slate-900">Relatório Dados Full (Exportação Completa)</h3>
                                     </div>
                                     <Button
                                         size="sm"
                                         onClick={() => handleExportReport("FULL")}
-                                        className="bg-blue-600 hover:bg-blue-600 text-white rounded-xl text-xs font-semibold"
+                                        className="bg-blue-600 hover:bg-blue-600 text-white rounded-xl text-xs font-medium"
                                     >
                                         <Download className="h-4 w-4 mr-1.5" /> Baixar Planilha Completa (Full Excel)
                                     </Button>
@@ -921,7 +911,7 @@ export function ReportShell() {
 
                                 <div className="max-h-[500px] overflow-x-auto overflow-y-auto rounded-xl border border-slate-200 bg-white">
                                     <table className="w-full text-left text-xs text-slate-700 whitespace-nowrap">
-                                        <thead className="sticky top-0 bg-slate-100 font-bold uppercase text-slate-600 border-b border-slate-200">
+                                        <thead className="sticky top-0 bg-slate-100 font-medium uppercase text-slate-600 border-b border-slate-200">
                                             <tr>
                                                 <th className="p-3">NUM</th>
                                                 <th className="p-3">Nome Atleta</th>
@@ -954,8 +944,8 @@ export function ReportShell() {
                                         <tbody className="divide-y divide-slate-100">
                                             {MOCK_ATHLETES_REPORT.map((athlete) => (
                                                 <tr key={athlete.num} className="hover:bg-slate-50">
-                                                    <td className="p-3 font-bold">#{athlete.num}</td>
-                                                    <td className="p-3 font-semibold">{athlete.nomeAtleta}</td>
+                                                    <td className="p-3 font-medium">{athlete.num}</td>
+                                                    <td className="p-3 font-medium">{athlete.nomeAtleta}</td>
                                                     <td className="p-3">{athlete.kit}</td>
                                                     <td className="p-3">{athlete.distancia}</td>
                                                     <td className="p-3">{athlete.faixaEtaria}</td>
@@ -964,7 +954,7 @@ export function ReportShell() {
                                                     <td className="p-3">{athlete.sexo}</td>
                                                     <td className="p-3">{athlete.equipe}</td>
                                                     <td className="p-3">{athlete.cidadeUf}</td>
-                                                    <td className="p-3 font-bold text-blue-600">{athlete.camiseta}</td>
+                                                    <td className="p-3 font-medium text-blue-600">{athlete.camiseta}</td>
                                                     <td className="p-3">{athlete.cpfAtleta}</td>
                                                     <td className="p-3">{athlete.cel}</td>
                                                     <td className="p-3">{athlete.email}</td>
@@ -974,7 +964,7 @@ export function ReportShell() {
                                                     <td className="p-3">{athlete.obs2}</td>
                                                     <td className="p-3">{athlete.alerta}</td>
                                                     <td className="p-3">{athlete.nomeEvento}</td>
-                                                    <td className="p-3 font-bold">{athlete.statusEntrega}</td>
+                                                    <td className="p-3 font-medium">{athlete.statusEntrega}</td>
                                                     <td className="p-3 font-mono">{athlete.dataEntrega || "-"}</td>
                                                     <td className="p-3">{athlete.usuarioEntrega || "-"}</td>
                                                     <td className="p-3">{athlete.obsEntrega || "-"}</td>
@@ -990,262 +980,135 @@ export function ReportShell() {
                     </div>
                 )}
 
-                {/* CONTEÚDO DA ABA 2: TABELA DINÂMICA, DASHBOARDS E GRÁFICOS */}
-                {activeTab === "DINAMICO" && (
+                {activeTab === "MODELO_ATUALIZACAO" && (
                     <div className="space-y-6">
-                        {/* Painel de Filtros Globais */}
-                        <Card className="border-slate-200 p-4 shadow-none space-y-3">
-                            <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
-                                <Filter className="h-4 w-4 text-blue-600" /> Filtros Globais de Análise
+                        <Card className="border-slate-200 p-5 shadow-none">
+                            <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h2 className="text-base font-medium text-slate-900">Excel Modelo e Exportação</h2>
+                                    <p className="mt-1 text-xs text-slate-500">Exporte alterações ou importe uma planilha para atualizar os atletas identificados por NUM ou CPF.</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <label className={`inline-flex h-9 cursor-pointer items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-medium text-blue-700 hover:bg-blue-100 ${isImporting ? "pointer-events-none opacity-60" : ""}`}>
+                                        <Upload className="mr-1.5 h-4 w-4" /> {isImporting ? "Importando..." : "Importar atualizações"}
+                                        <input
+                                            type="file"
+                                            accept=".csv,text/csv"
+                                            className="sr-only"
+                                            onChange={(event) => {
+                                                const file = event.target.files?.[0];
+                                                if (file) void importAthleteUpdates(file);
+                                                event.target.value = "";
+                                            }}
+                                        />
+                                    </label>
+                                    <Button
+                                        size="sm"
+                                        disabled={updateModelFields.length === 0}
+                                        onClick={exportUpdateModel}
+                                        className="rounded-xl bg-emerald-600 text-xs font-medium text-white hover:bg-emerald-700"
+                                    >
+                                        <FileSpreadsheet className="mr-1.5 h-4 w-4" /> Exportar {reportAthletes.filter((athlete) => athlete.foiAlterado).length} atualizações
+                                    </Button>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                                <div>
-                                    <label className="text-slate-500 block mb-1">Modalidade</label>
-                                    <select
-                                        value={filterModalidade}
-                                        onChange={(e) => setFilterModalidade(e.target.value)}
-                                        className="w-full h-9 rounded-lg border border-slate-300 px-2 bg-white"
-                                    >
-                                        <option value="TODOS">Todas</option>
-                                        <option value="5 KM">5 KM</option>
-                                        <option value="10 KM">10 KM</option>
-                                        <option value="21 KM">21 KM</option>
-                                        <option value="42 KM">42 KM</option>
-                                    </select>
-                                </div>
 
-                                <div>
-                                    <label className="text-slate-500 block mb-1">Sexo</label>
-                                    <select
-                                        value={filterSexo}
-                                        onChange={(e) => setFilterSexo(e.target.value)}
-                                        className="w-full h-9 rounded-lg border border-slate-300 px-2 bg-white"
-                                    >
-                                        <option value="TODOS">Todos</option>
-                                        <option value="M">Masculino</option>
-                                        <option value="F">Feminino</option>
-                                    </select>
+                            {importSummary && (
+                                <div className="mt-4 grid gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs sm:grid-cols-4">
+                                    <p><span className="text-slate-500">Atletas atualizados:</span> <strong className="text-emerald-800">{importSummary.updated}</strong></p>
+                                    <p><span className="text-slate-500">Campos alterados:</span> <strong className="text-emerald-800">{importSummary.fieldsChanged}</strong></p>
+                                    <p><span className="text-slate-500">Sem mudança:</span> <strong className="text-slate-700">{importSummary.unchanged}</strong></p>
+                                    <p><span className="text-slate-500">Não localizados:</span> <strong className="text-amber-800">{importSummary.notFound}</strong></p>
                                 </div>
+                            )}
 
-                                <div>
-                                    <label className="text-slate-500 block mb-1">Cidade</label>
-                                    <select
-                                        value={filterCidade}
-                                        onChange={(e) => setFilterCidade(e.target.value)}
-                                        className="w-full h-9 rounded-lg border border-slate-300 px-2 bg-white"
-                                    >
-                                        <option value="TODOS">Todas</option>
-                                        <option value="Bauru/SP">Bauru/SP</option>
-                                        <option value="São Paulo/SP">São Paulo/SP</option>
-                                        <option value="Campinas/SP">Campinas/SP</option>
-                                        <option value="Sorocaba/SP">Sorocaba/SP</option>
-                                    </select>
-                                </div>
+                            <p className="mt-4 text-xs text-slate-500">Apenas campos preenchidos substituem o valor atual</p>
 
-                                <div>
-                                    <label className="text-slate-500 block mb-1">Camiseta</label>
-                                    <select
-                                        value={filterCamiseta}
-                                        onChange={(e) => setFilterCamiseta(e.target.value)}
-                                        className="w-full h-9 rounded-lg border border-slate-300 px-2 bg-white"
-                                    >
-                                        <option value="TODOS">Todas</option>
-                                        <option value="P">P</option>
-                                        <option value="M">M</option>
-                                        <option value="G">G</option>
-                                        <option value="GG">GG</option>
-                                        <option value="XGG">XGG</option>
-                                        <option value="Baby Look M">Baby Look M</option>
-                                    </select>
-                                </div>
+                            <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                                <table className="w-full min-w-[640px] text-left text-xs">
+                                    <thead className="bg-slate-100 uppercase tracking-wider text-slate-600">
+                                        <tr><th className="p-3">Incluir</th><th className="p-3">Campo RS Kits</th><th className="p-3">Coluna no modelo de destino</th></tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                        {REPORT_FIELDS.filter((field) => UPDATE_MODEL_FIELD_KEYS.includes(field.key)).map((field) => (
+                                            <tr key={field.key} className="hover:bg-slate-50">
+                                                <td className="p-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={updateModelFields.includes(field.key)}
+                                                        onChange={() => toggleField(field.key, updateModelFields, setUpdateModelFields)}
+                                                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                </td>
+                                                <td className="p-3 font-medium text-slate-800">{field.label}</td>
+                                                <td className="p-3">
+                                                    <input
+                                                        value={updateModelHeaders[field.key]}
+                                                        onChange={(event) => setUpdateModelHeaders((current) => ({ ...current, [field.key]: event.target.value }))}
+                                                        className="h-8 w-full rounded-lg border border-slate-300 px-2.5 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </Card>
+                    </div>
+                )}
 
+                {activeTab === "RELACAO_ENTREGA" && (
+                    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                        <Card className="border-slate-200 p-5 shadow-none">
+                            <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
                                 <div>
-                                    <label className="text-slate-500 block mb-1">Faixa Etária</label>
-                                    <select
-                                        value={filterFaixaEtaria}
-                                        onChange={(e) => setFilterFaixaEtaria(e.target.value)}
-                                        className="w-full h-9 rounded-lg border border-slate-300 px-2 bg-white"
-                                    >
-                                        <option value="TODOS">Todas</option>
-                                        <option value="25–29">25–29</option>
-                                        <option value="30–34">30–34</option>
-                                        <option value="35–39">35–39</option>
-                                        <option value="40–44">40–44</option>
-                                        <option value="51–60">51–60</option>
-                                    </select>
+                                    <h2 className="text-base font-medium text-slate-900">Relatório de Relação de Entrega</h2>
+                                    <p className="mt-1 text-xs text-slate-500">Selecione os campos que deverão aparecer no relatório final.</p>
                                 </div>
+                                <Button
+                                    size="sm"
+                                    disabled={deliveryRelationFields.length === 0}
+                                    onClick={() => setIsDeliveryRelationGenerated(true)}
+                                    className="rounded-xl text-xs font-medium"
+                                >
+                                    Gerar relatório
+                                </Button>
+                            </div>
+
+                            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                                {REPORT_FIELDS.map((field) => {
+                                    const checked = deliveryRelationFields.includes(field.key);
+                                    return (
+                                        <label key={field.key} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-xs transition ${checked ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"}`}>
+                                            <input type="checkbox" checked={checked} onChange={() => toggleField(field.key, deliveryRelationFields, setDeliveryRelationFields)} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                                            {field.label}
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </Card>
 
-                        {/* Botões de Seleção do Relatório Dinâmico */}
-                        <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-3">
-                            {[
-                                { id: "MODALIDADE", label: "Rel - Modalidade" },
-                                { id: "EQUIPE", label: "Rel - Equipe" },
-                                { id: "CIDADE", label: "Rel - Cidade" },
-                                { id: "CAMISETA", label: "Rel - Camiseta" },
-                                { id: "SEXO", label: "Rel - Sexo" },
-                                { id: "SEXO_DISTANCIA", label: "Rel - Sexo e Distância" },
-                                { id: "IDADE", label: "Rel - Idade (Faixas)" },
-                                { id: "ENTREGAS_HORA", label: "Rel - Entregas (Dia/Hora/Usuário)" },
-                            ].map((btn) => (
-                                <Button
-                                    key={btn.id}
-                                    size="sm"
-                                    variant={subTabDinamico === btn.id ? "default" : "outline"}
-                                    onClick={() => setSubTabDinamico(btn.id as "MODALIDADE" | "EQUIPE" | "CIDADE" | "CAMISETA" | "SEXO" | "SEXO_DISTANCIA" | "IDADE" | "ENTREGAS_HORA")}
-                                    className="rounded-xl text-xs font-semibold"
-                                >
-                                    {btn.label}
-                                </Button>
-                            ))}
-                        </div>
-
-                        {/* VISUALIZAÇÕES DINÂMICAS */}
-                        {subTabDinamico === "MODALIDADE" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Relatório por Modalidade / Distância</h3>
-                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                                    {statsModalidade.map((item) => (
-                                        <div key={item.modalidade} className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200">
-                                            <p className="text-xs font-bold text-blue-600 uppercase">{item.modalidade}</p>
-                                            <p className="text-3xl font-black text-slate-900 mt-1">{item.total} atletas</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        )}
-
-                        {subTabDinamico === "EQUIPE" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Ranking por Equipes / Assessorias</h3>
-                                <div className="space-y-3">
-                                    {statsEquipe.map((item) => (
-                                        <div key={item.equipe} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
-                                            <span className="font-bold text-slate-800">{item.equipe}</span>
-                                            <span className="font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full border border-blue-200">
-                                                {item.total} inscritos
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        )}
-
-                        {subTabDinamico === "CIDADE" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Distribuição Geográfica por Cidade/UF</h3>
-                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                                    {statsCidade.map((item) => (
-                                        <div key={item.cidade} className="p-4 rounded-2xl bg-slate-100 border border-slate-200">
-                                            <p className="text-xs font-bold text-slate-500 uppercase">{item.cidade}</p>
-                                            <p className="text-2xl font-bold text-slate-900 mt-1">{item.total} atletas</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        )}
-
-                        {subTabDinamico === "CAMISETA" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Demanda por Tamanho de Camiseta</h3>
-                                <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
-                                    {statsCamiseta.map((item) => (
-                                        <div key={item.tamanho} className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200 text-center">
-                                            <p className="text-xs font-bold text-indigo-700 uppercase">Tamanho {item.tamanho}</p>
-                                            <p className="text-3xl font-black text-indigo-950 mt-1">{item.total}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        )}
-
-                        {subTabDinamico === "SEXO" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Distribuição de Atletas por Sexo</h3>
-                                <div className="grid gap-6 sm:grid-cols-2">
-                                    <div className="p-6 rounded-2xl bg-blue-50 border border-blue-200 text-center space-y-2">
-                                        <p className="text-xs font-bold text-blue-600 uppercase">Masculino</p>
-                                        <p className="text-4xl font-black text-blue-600">{statsSexo.masculino}</p>
-                                        <p className="text-sm font-semibold text-blue-600">{statsSexo.pctM}% do total</p>
-                                    </div>
-
-                                    <div className="p-6 rounded-2xl bg-pink-50 border border-pink-200 text-center space-y-2">
-                                        <p className="text-xs font-bold text-pink-700 uppercase">Feminino</p>
-                                        <p className="text-4xl font-black text-pink-900">{statsSexo.feminino}</p>
-                                        <p className="text-sm font-semibold text-pink-600">{statsSexo.pctF}% do total</p>
-                                    </div>
-                                </div>
-                            </Card>
-                        )}
-
-                        {subTabDinamico === "SEXO_DISTANCIA" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Matriz Cruzada: Sexo × Distância</h3>
-                                <div className="overflow-x-auto rounded-xl border border-slate-200">
-                                    <table className="w-full text-left text-xs">
-                                        <thead className="bg-slate-100 font-bold uppercase text-slate-600 border-b border-slate-200">
-                                            <tr>
-                                                <th className="p-3">Distância / Prova</th>
-                                                <th className="p-3">Masculino (M)</th>
-                                                <th className="p-3">Feminino (F)</th>
-                                                <th className="p-3 font-black">Total</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 bg-white">
-                                            {statsSexoDistancia.map((row) => (
-                                                <tr key={row.distancia} className="hover:bg-slate-50">
-                                                    <td className="p-3 font-bold text-slate-900">{row.distancia}</td>
-                                                    <td className="p-3 text-blue-600 font-semibold">{row.m} atletas</td>
-                                                    <td className="p-3 text-pink-700 font-semibold">{row.f} atletas</td>
-                                                    <td className="p-3 font-black text-slate-900 bg-slate-50">{row.total} atletas</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-                        )}
-
-                        {subTabDinamico === "IDADE" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Distribuição por Faixas de Idade</h3>
-                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                    {statsFaixaEtaria.map((item) => (
-                                        <div key={item.faixa} className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200">
-                                            <p className="text-xs font-bold text-emerald-800 uppercase">{item.faixa}</p>
-                                            <p className="text-3xl font-black text-emerald-950 mt-1">{item.total} atletas</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </Card>
-                        )}
-
-                        {subTabDinamico === "ENTREGAS_HORA" && (
-                            <Card className="border-slate-200 p-5 shadow-none space-y-4">
-                                <h3 className="text-base font-bold text-slate-900">Relatório de Entregas por Dia/Hora e Operador</h3>
-                                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                                    <table className="w-full text-left text-xs">
-                                        <thead className="bg-slate-100 font-bold uppercase text-slate-600 border-b border-slate-200">
-                                            <tr>
-                                                <th className="p-3">Intervalo de Horário</th>
-                                                <th className="p-3">Operador / Atendente</th>
-                                                <th className="p-3 font-bold">Total de Kits Entregues</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {statsEntregasHora.map((row, idx) => (
-                                                <tr key={idx} className="hover:bg-slate-50">
-                                                    <td className="p-3 font-mono font-bold text-slate-800">{row.hora}</td>
-                                                    <td className="p-3 font-medium text-slate-900">{row.operador}</td>
-                                                    <td className="p-3 font-black text-emerald-600 bg-emerald-50/50">{row.entregas} kits</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </Card>
-                        )}
+                        <Card className="border-slate-200 p-5 shadow-none">
+                            <h3 className="text-sm font-medium text-slate-900">Resumo da exportação</h3>
+                            <dl className="mt-4 space-y-3 text-xs">
+                                <div className="flex items-center justify-between"><dt className="text-slate-500">Atletas no relatório</dt><dd className="font-medium text-slate-900">{reportAthletes.length}</dd></div>
+                                <div className="flex items-center justify-between"><dt className="text-slate-500">Campos selecionados</dt><dd className="font-medium text-slate-900">{deliveryRelationFields.length}</dd></div>
+                            </dl>
+                            <div className="mt-5 border-t border-slate-100 pt-4">
+                                <p className="text-[11px] font-medium uppercase tracking-wide text-slate-400">Colunas selecionadas</p>
+                                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                                    {deliveryRelationFields.length ? deliveryRelationFields.map((key) => REPORT_FIELDS.find((field) => field.key === key)?.label).join(" · ") : "Nenhum campo selecionado"}
+                                </p>
+                            </div>
+                            <Button
+                                size="sm"
+                                disabled={!isDeliveryRelationGenerated || deliveryRelationFields.length === 0}
+                                onClick={exportDeliveryRelation}
+                                className="mt-5 w-full rounded-xl bg-emerald-600 text-xs font-medium text-white hover:bg-emerald-700"
+                            >
+                                <Download className="mr-1.5 h-4 w-4" /> Exportar relação em Excel/CSV
+                            </Button>
+                        </Card>
                     </div>
                 )}
             </main>

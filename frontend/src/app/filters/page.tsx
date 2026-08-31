@@ -1,0 +1,1 @@
+export { Filters as default } from "@/components/filters/filters";

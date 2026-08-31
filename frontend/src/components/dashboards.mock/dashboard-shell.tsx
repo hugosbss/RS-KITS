@@ -110,7 +110,7 @@ function PeakLineChart({ data }: { data: typeof peakData }) {
                     className="pointer-events-none absolute rounded-lg bg-slate-900 px-3 py-2 text-xs text-white shadow-lg -translate-x-1/2 -translate-y-full"
                     style={{ left: `${(tooltip.x / W) * 100}%`, top: `${(tooltip.y / H) * 100}%` }}
                 >
-                    <p className="font-bold">{tooltip.d.hour}</p>
+                    <p className="font-medium">{tooltip.d.hour}</p>
                     <p style={{ color: "#F5A623" }}>Ontem: {tooltip.d.ontem}</p>
                     <p className="text-white">Hoje: {tooltip.d.hoje}</p>
                 </div>
@@ -127,7 +127,7 @@ const activities = [
 ];
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-    return <h2 className="text-sm font-bold text-slate-900">{children}</h2>;
+    return <h2 className="text-sm font-medium text-slate-900">{children}</h2>;
 }
 
 export function DashboardMockShell() {
@@ -138,8 +138,8 @@ export function DashboardMockShell() {
             <main className="space-y-6 p-4 sm:p-6 lg:ml-64 lg:p-8">
                 <header className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                     <div>
-                        <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">Painel operacional</p>
-                        <h1 className="mt-1 text-2xl font-black text-slate-900">Maratona Internacional 2027</h1>
+                        <p className="text-xs font-medium uppercase tracking-wider text-blue-600">Painel operacional</p>
+                        <h1 className="mt-1 text-2xl font-semibold text-slate-900">Maratona Internacional 2027</h1>
                         <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-500"><MapPin className="h-4 w-4" /> São Paulo, SP · 15 de agosto</p>
                     </div>
                 </header>
@@ -165,7 +165,7 @@ export function DashboardMockShell() {
                         ["Alertas ativos", "19", BellRing, "text-rose-700 bg-rose-50"],
                     ].map(([label, value, Icon, tone]) => {
                         const MetricIcon = Icon as typeof Users;
-                        return <Card key={label as string} className="flex items-center justify-between border-slate-200 p-4 shadow-sm"><div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label as string}</p><p className="mt-1 text-2xl font-black">{value as string}</p></div><div className={"flex h-11 w-11 items-center justify-center rounded-xl " + tone}><MetricIcon className="h-5 w-5" /></div></Card>;
+                        return <Card key={label as string} className="flex items-center justify-between border-slate-200 p-4 shadow-sm"><div><p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label as string}</p><p className="mt-1 text-2xl font-semibold">{value as string}</p></div><div className={"flex h-11 w-11 items-center justify-center rounded-xl " + tone}><MetricIcon className="h-5 w-5" /></div></Card>;
                     })}
                 </section>
 
@@ -173,8 +173,8 @@ export function DashboardMockShell() {
                     <Card className="border-slate-200 p-5 shadow-sm xl:col-span-2">
                         <SectionTitle>Evolução do evento</SectionTitle>
                         <div className="mt-5 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-                            <div><p className="text-4xl font-black text-slate-900">61%</p><p className="mt-1 text-sm font-medium text-slate-600">Entrega concluída · 5.230 / 8.452</p></div>
-                            <p className="text-sm font-semibold text-emerald-700">Em andamento</p>
+                            <div><p className="text-4xl font-semibold text-slate-900">61%</p><p className="mt-1 text-sm font-normal text-slate-600">Entrega concluída · 5.230 / 8.452</p></div>
+                            <p className="text-sm font-medium text-emerald-700">Em andamento</p>
                         </div>
                         <div className="mt-4 h-4 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-[61%] rounded-full bg-gradient-to-r from-blue-600 to-emerald-500" /></div>
                         <div className="mt-6 grid grid-cols-3 text-center text-xs"><div><span className="mx-auto mb-2 block h-3 w-3 rounded-full bg-blue-600" />Preparação</div><div className="relative"><span className="mx-auto mb-2 block h-4 w-4 rounded-full border-4 border-blue-200 bg-blue-600" />Entrega</div><div className="text-slate-400"><span className="mx-auto mb-2 block h-3 w-3 rounded-full border-2 border-slate-300 bg-white" />Finalizado</div></div>
@@ -185,7 +185,7 @@ export function DashboardMockShell() {
                                 <SectionTitle>Picos de atendimento</SectionTitle>
                                 <p className="mt-0.5 text-xs text-slate-500">Entregas por hora · Hoje vs Ontem</p>
                             </div>
-                            <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-600 border border-rose-200">
+                            <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-medium text-rose-600 border border-rose-200">
                                 <span className="h-2 w-2 rounded-full bg-[#FF6B4A]" /> Pico: 88 (13h)
                             </span>
                         </div>
@@ -206,20 +206,20 @@ export function DashboardMockShell() {
                 </section>
 
                 <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Distâncias</SectionTitle><div className="mt-4 space-y-4">{distances.map((item) => <div key={item.label}><div className="mb-1 flex justify-between text-sm font-semibold"><span>{item.label}</span><span>{item.value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={"h-full rounded-full " + item.color} style={{ width: item.value + "%" }} /></div></div>)}</div></Card>
-                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Kits</SectionTitle><div className="mt-4 space-y-3">{[["Entregues", "5.230", "text-emerald-700"], ["Disponíveis", "3.210", "text-blue-700"], ["Reservados", "12", "text-amber-700"]].map(([label, value, color]) => <div key={label} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span className="text-sm text-slate-600">{label}</span><strong className={color}>{value}</strong></div>)}</div></Card>
-                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Equipes</SectionTitle><div className="mt-4 space-y-3">{[["Team A", "150"], ["Team B", "35"], ["Team C", "50"]].map(([label, value]) => <div key={label} className="flex justify-between border-b border-slate-100 pb-2 text-sm"><span>{label}</span><strong>{value}</strong></div>)}</div><div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm"><strong>Sem equipe: 812</strong></div></Card>
+                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Modalidade</SectionTitle><div className="mt-4 space-y-4">{distances.map((item) => <div key={item.label}><div className="mb-1 flex justify-between text-sm font-medium"><span>{item.label}</span><span>{item.value}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className={"h-full rounded-full " + item.color} style={{ width: item.value + "%" }} /></div></div>)}</div></Card>
+                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Kits</SectionTitle><div className="mt-4 space-y-3">{[["Entregues", "5.230", "text-emerald-700"], ["Disponíveis", "3.210", "text-blue-700"], ["Reservados", "12", "text-amber-700"]].map(([label, value, color]) => <div key={label} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2"><span className="text-sm text-slate-600">{label}</span><span className={"font-medium " + color}>{value}</span></div>)}</div></Card>
+                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Equipes</SectionTitle><div className="mt-4 space-y-3">{[["Team A", "150"], ["Team B", "35"], ["Team C", "50"]].map(([label, value]) => <div key={label} className="flex justify-between border-b border-slate-100 pb-2 text-sm"><span>{label}</span><span className="font-medium">{value}</span></div>)}</div><div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm"><span className="font-medium">Sem equipe: 812</span></div></Card>
                 </section>
 
                 <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Cidade dos atletas</SectionTitle><div className="mt-4 space-y-3">{[["São Paulo", "2.450"], ["Bauru", "820"], ["Campinas", "630"], ["Agudos", "630"], ["Jáu", "630"]].map(([city, total]) => <div key={city} className="flex items-center justify-between"><span className="flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-rose-500" />{city}</span><strong>{total}</strong></div>)}</div></Card>
-                    <Card className="border-slate-200 p-5 shadow-sm"><div className="flex items-center justify-between"><SectionTitle>Clima</SectionTitle><CloudSun className="h-6 w-6 text-amber-500" /></div><div className="mt-5 flex items-end gap-8"><p className="text-5xl font-black">24°</p><div className="text-sm"><p className="text-slate-500">Umidade</p><strong>72%</strong><p className="mt-2 text-slate-500">Parcialmente nublado</p></div></div></Card>
+                    <Card className="border-slate-200 p-5 shadow-sm"><SectionTitle>Cidade dos atletas</SectionTitle><div className="mt-4 space-y-3">{[["São Paulo", "2.450"], ["Bauru", "820"], ["Campinas", "630"], ["Agudos", "630"], ["Jáu", "630"]].map(([city, total]) => <div key={city} className="flex items-center justify-between"><span className="flex items-center gap-2 text-sm"><MapPin className="h-4 w-4 text-rose-500" />{city}</span><span className="font-medium">{total}</span></div>)}</div></Card>
+                    <Card className="border-slate-200 p-5 shadow-sm"><div className="flex items-center justify-between"><SectionTitle>Clima</SectionTitle><CloudSun className="h-6 w-6 text-amber-500" /></div><div className="mt-5 flex items-end gap-8"><p className="text-5xl font-semibold">24°</p><div className="text-sm"><p className="text-slate-500">Umidade</p><span className="font-medium">72%</span><p className="mt-2 text-slate-500">Parcialmente nublado</p></div></div></Card>
                     <Card className="border-slate-200 p-5 shadow-sm">
                         <SectionTitle>Últimas atividades</SectionTitle>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
                             {activities.map(([time, action]) => 
                             <div key={time} className="flex gap-3 rounded-xl bg-slate-50 p-3">
-                                <p className="font-mono text-xs font-bold text-blue-700">{time}</p>
+                                <p className="font-mono text-xs font-medium text-blue-700">{time}</p>
                                 <p className="text-sm text-slate-700">{action}</p>
                             </div>)}
                         </div>

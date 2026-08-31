@@ -32,17 +32,15 @@ Thumbs.db
 # Prisma
 backend/prisma/migrations/**/migration_lock.toml
 
-# Project-specific files and folders
-AGENTS.md
-docker-compose.yml
-NOTES.md
-README.md
-SETUP.md
-node_modules/
-
 # PWA
 frontend/public/sw.js
 frontend/public/workbox-*.js
 
 # Testing
 coverage/
+
+# Development
+AGENTS.md
+NOTES.md
+README.md
+SETUP.md
