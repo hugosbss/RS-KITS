@@ -1,17 +1,38 @@
 "use client";
 
-import { useState } from "react";
-import { Package2, ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
+import { useAppState } from "@/components/providers/app-context";
+import { maskIdentifier } from "@/lib/utils";
 
 export default function LoginPage() {
-  const [cpf, setCpf] = useState("");
+  const { login, isAuthenticated, hydrated } = useAppState();
+  const router = useRouter();
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (hydrated && isAuthenticated) {
+      router.replace("/dashboard");
+    }
+  }, [hydrated, isAuthenticated, router]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Apenas visual por enquanto
-    window.location.href = "/dashboard";
+    if (!identifier || !password) return;
+    setLoading(true);
+    setError("");
+    try {
+      const user = await login(identifier, password);
+      window.location.href = "/dashboard";
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível entrar.");
+      setLoading(false);
+    }
   };
 
   return (
@@ -25,9 +46,6 @@ export default function LoginPage() {
       <div className="relative z-10 flex w-full max-w-sm flex-col items-center">
         {/* Topo / Logo */}
         <div className="mb-8 flex items-center justify-center gap-3">
-          {/* <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#F5A623] to-[#FF6B4A] shadow-lg shadow-[#F5A623]/30">
-            <Package2 className="h-7 w-7 text-white" />
-          </div> */}
           <span className="text-3xl font-black tracking-tight text-white drop-shadow-md">
             RS KITS
           </span>
@@ -51,63 +69,49 @@ export default function LoginPage() {
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-1.5">
-              {/* <label
-                htmlFor="cpf"
-                className="text-sm font-medium text-slate-300"
-              >
-                CPF ou Código de Acesso
-              </label> */}
               <input
-                id="cpf"
+                id="identifier"
                 type="text"
                 required
-                value={cpf}
-                onChange={(e) => setCpf(e.target.value)}
-                placeholder="Digite seu acesso"
+                value={identifier}
+                onChange={(e) => setIdentifier(maskIdentifier(e.target.value))}
+                placeholder="CPF, CNPJ ou e-mail"
                 className="h-12 w-full rounded-xl border border-slate-700 bg-slate-800/80 px-4 text-sm text-white placeholder-slate-500 outline-none transition-all focus:border-[#F5A623] focus:ring-2 focus:ring-[#F5A623]/20"
               />
             </div>
 
             <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                {/* <label
-                  htmlFor="password"
-                  className="text-sm font-medium text-slate-300"
-                >
-                  Senha
-                </label> */}
-                {/* <a
-                  href="#" className="text-xs font-medium text-[#F5A623] hover:text-[#FF6B4A]">
-                  Esqueceu a senha?
-                </a> */}
-              </div>
               <input
                 id="password"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="Senha"
                 className="h-12 w-full rounded-xl border border-slate-700 bg-slate-800/80 px-4 text-sm text-white placeholder-slate-500 outline-none transition-all focus:border-[#F5A623] focus:ring-2 focus:ring-[#F5A623]/20"
               />
             </div>
 
+            {error && (
+              <p className="text-sm font-medium text-rose-400">{error}</p>
+            )}
+
             <button
               type="submit"
-              className="group mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#F5A623] to-[#FF6B4A] px-4 font-bold text-white transition-all hover:shadow-lg hover:shadow-[#FF6B4A]/30 focus:outline-none focus:ring-2 focus:ring-[#FF6B4A]/50"
+              disabled={loading}
+              className="group mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#F5A623] to-[#FF6B4A] px-4 font-bold text-white transition-all hover:shadow-lg hover:shadow-[#FF6B4A]/30 focus:outline-none focus:ring-2 focus:ring-[#FF6B4A]/50 disabled:opacity-60"
             >
-              Acessar Painel
-              <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+              {loading ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  Acessar Painel
+                  <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                </>
+              )}
             </button>
           </form>
         </div>
-        
-        {/* <div className="mt-8 text-center text-xs text-slate-500">
-            Precisa de ajuda para acessar?{" "}
-            <a href="#" className="font-semibold text-[#FF6B4A] hover:underline">
-              Fale com o administrador
-            </a>
-        </div> */}
       </div>
     </div>
   );

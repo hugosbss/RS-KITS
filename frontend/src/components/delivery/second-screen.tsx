@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Heart, HeartPlus } from "lucide-react";
 import { DotLottieReact } from "@lottiefiles/dotlottie-react";
-import type { Athlete } from "@/components/delivery/delivery-shell";
+import type { Athlete } from "@/components/delivery/delivery";
+import { useAppState } from "@/components/providers/app-context";
 
 export type SecondScreenDisplayMode = "MANUAL" | "AUTOMATICO";
 
@@ -13,8 +14,8 @@ type SecondScreenPayload = {
     expiresAt: number | null;
 };
 
-const SECOND_SCREEN_CHANNEL = "sport-delivery-second-screen";
-const SECOND_SCREEN_STORAGE_KEY = "sport-delivery:second-screen";
+const SECOND_SCREEN_CHANNEL = "rs-kits-second-screen";
+const SECOND_SCREEN_STORAGE_KEY = "rs-kits:second-screen";
 const AUTOMATIC_DISPLAY_DURATION_MS = 90_000;
 
 const readSecondScreenPayload = (): SecondScreenPayload | null => {
@@ -73,12 +74,13 @@ export const clearSecondScreenAthlete = () => {
     }
 };
 
-const formatRemainingTime = (expiresAt: number) => {
-    const remainingSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-    return `${remainingSeconds}s restantes`;
-};
+// const formatRemainingTime = (expiresAt: number) => {
+//     const remainingSeconds = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+//     return `${remainingSeconds}s restantes`;
+// };
 
 export function SecondScreen() {
+    const { selectedEvent } = useAppState();
     const [payload, setPayload] = useState<SecondScreenPayload | null>(null);
     const [, setNow] = useState(Date.now());
 
@@ -175,11 +177,11 @@ export function SecondScreen() {
                         </p> */}
 
                         <p className="mt-2 text-lg font-bold text-slate-200">
-                            {/* {eventName} */}
+                            {selectedEvent?.name}
                         </p>
 
                         <p className="mt-1 text-sm text-slate-500">
-                            Maratona Internacional 2027 · 15 de agosto
+                            {selectedEvent?.place}
                         </p>
                     </div>
 
@@ -226,7 +228,7 @@ export function SecondScreen() {
                                 </div>
                             </div>
 
-                            {/* Informações */}
+                            {/* saúde */}
                             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                                 <Detail label="Convênio médico" value={athlete.convenioMedico || "-"}/>
                                 <Detail label="Tipo sanguíneo" value={athlete.tipoSanguineo || "-"}/>
@@ -238,7 +240,7 @@ export function SecondScreen() {
 
                         <footer className="mt-auto flex flex-col items-center justify-between gap-3 pt-6 text-sm text-slate-400 sm:flex-row">
                             {/* <span className="inline-flex items-center gap-2"><Heart className="h-4 w-4 text-rose-400" /> Confira seus dados com o operador.</span> */}
-                            {payload?.expiresAt && <span>{formatRemainingTime(payload.expiresAt)}</span>}
+                            {/* {payload?.expiresAt && <span>{formatRemainingTime(payload.expiresAt)}</span>} */}
                         </footer>
                     </div>
                 )}

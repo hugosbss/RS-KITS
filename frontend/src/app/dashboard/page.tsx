@@ -1,7 +1,10 @@
-// export {
-// 	DashboardShell as default,
-// } from '@/components/dashboard/dashboard-shell';
+import { RequireAuth } from "@/components/providers/require-auth";
+import { Dashboard } from "@/components/dashboard/dashboard";
 
-export {
-	DashboardMockShell as default,
-} from '@/components/dashboards.mock/dashboard-shell';
+export default function DashboardPage() {
+  return (
+    <RequireAuth>
+      <Dashboard />
+    </RequireAuth>
+  );
+}

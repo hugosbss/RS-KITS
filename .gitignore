@@ -39,8 +39,23 @@ frontend/public/workbox-*.js
 # Testing
 coverage/
 
-# Development
-AGENTS.md
-NOTES.md
-README.md
-SETUP.md
+# Documentação: só entram os .md curtos de config/uso para quem vai usar.
+# Os demais (planos, anotações, manuais longos) ficam apenas locais.
+*.md
+*.MD
+!/README.md
+!/SETUP.md
+!/AGENTS.md
+
+# Empacotamentos do desktop (win-unpacked, .zip, .exe, AppImage, deb)
+release/
+
+# Builds de apoio regeneráveis
+backend/web/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+
+# instaladores servidos pelo backend (backend/downloads)
+backend/downloads/
+

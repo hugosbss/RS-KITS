@@ -5,6 +5,7 @@ import {
   BarChart3,
   CalendarDays,
   ClipboardList,
+  LogOut,
   Package2,
   PieChart,
   Settings,
@@ -24,11 +25,15 @@ const items = [
 ];
 export function Sidebar() {
   const pathname = usePathname();
-  const { currentUser, users, setCurrentUserId, selectedEvent } = useAppState();
+  const { currentUser, logout, selectedEvent } = useAppState();
   const visibleItems = items.filter((item) => {
     if (item.href === "/events" || item.href === "/import") return currentUser.role === "ADMIN";
     return true;
   });
+  const handleLogout = () => {
+    logout();
+    window.location.href = "/login";
+  };
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
       <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-6">
@@ -53,12 +58,19 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="mx-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-        {/* <p className="truncate text-xs font-bold text-slate-800">{currentUser.name}</p> */}
-        {/* <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-600">{currentUser.role}</p> */}
-        <select value={currentUser.id} onChange={(event) => setCurrentUserId(event.target.value)} className="mt-2 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-[11px] text-slate-600">
-          {users.map((user) => <option key={user.id} value={user.id}>{user.role}: {user.name}</option>)}
-        </select>
+      <div className="border-t border-slate-100 p-3">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="truncate text-xs font-bold text-slate-800">{currentUser.name}</p>
+          <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-600">{currentUser.role}</p>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            Sair
+          </button>
+        </div>
       </div>
       {currentUser.role !== "OPERADOR" && <div className="border-t border-slate-100 p-3">
         <Link href="/settings" className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${pathname === "/settings" ? "bg-blue-50 text-blue-600" : "text-slate-600 hover:bg-slate-50"}`}>

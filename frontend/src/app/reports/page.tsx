@@ -1,5 +1,10 @@
-import { ReportShell } from "@/components/reports/reports-shell";
+import { RequireAuth } from "@/components/providers/require-auth";
+import { ReportShell } from "@/components/reports/reports";
 
 export default function ReportsPage() {
-    return <ReportShell />;
+  return (
+    <RequireAuth>
+      <ReportShell />
+    </RequireAuth>
+  );
 }

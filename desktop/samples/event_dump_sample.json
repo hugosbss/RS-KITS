@@ -1,0 +1,89 @@
+{
+  "event": {
+    "id": "maratona-2027",
+    "name": "Maratona Internacional 2027",
+    "date": "15/08/2027",
+    "place": "São Paulo/SP",
+    "status": "EM_ANDAMENTO"
+  },
+  "organizer": {
+    "id": "org-maratona-2027",
+    "name": "Maria Organizadora",
+    "email": "maria@maratona.example",
+    "offlinePassword": "654321"
+  },
+  "config": {
+    "cloudUrl": "http://127.0.0.1:19100"
+  },
+  "athletes": [
+    {
+      "id": "ath-0001",
+      "num": "0001",
+      "nomeAtleta": "João Carlos da Silva",
+      "kit": "Kit Padrão",
+      "modalidade": "10 KM",
+      "fxEtaria": "35-39",
+      "categEspecial": "",
+      "nascto": "12/04/1989",
+      "sexo": "M",
+      "equipe": "Runners Club",
+      "cidadeUf": "Bauru/SP",
+      "camiseta": "G",
+      "cpfAtleta": "123.456.789-00",
+      "cel": "(14) 99876-5432",
+      "email": "joao.carlos@email.com",
+      "quemVaiRetirar": "Próprio atleta",
+      "notas": "",
+      "obs1": "",
+      "obs2": "",
+      "alerta": "",
+      "nomeEvento": "Maratona Internacional 2027"
+    },
+    {
+      "id": "ath-0002",
+      "num": "0002",
+      "nomeAtleta": "Pedro Alves de Souza",
+      "kit": "Kit Padrão",
+      "modalidade": "21 KM",
+      "fxEtaria": "30-34",
+      "categEspecial": "",
+      "nascto": "05/08/1992",
+      "sexo": "M",
+      "equipe": "Pace Makers",
+      "cidadeUf": "São Paulo/SP",
+      "camiseta": "M",
+      "cpfAtleta": "234.567.890-11",
+      "cel": "(11) 98765-4321",
+      "email": "pedro.alves@email.com",
+      "quemVaiRetirar": "Próprio atleta",
+      "notas": "",
+      "obs1": "",
+      "obs2": "",
+      "alerta": "",
+      "nomeEvento": "Maratona Internacional 2027"
+    },
+    {
+      "id": "ath-0003",
+      "num": "0003",
+      "nomeAtleta": "Maria Costa Ribeiro",
+      "kit": "Kit VIP",
+      "modalidade": "42 KM",
+      "fxEtaria": "40-44",
+      "categEspecial": "",
+      "nascto": "18/11/1985",
+      "sexo": "F",
+      "equipe": "Runners Club",
+      "cidadeUf": "Campinas/SP",
+      "camiseta": "P",
+      "cpfAtleta": "345.678.901-22",
+      "cel": "(19) 97654-3210",
+      "email": "maria.costa@email.com",
+      "quemVaiRetirar": "Terceiro",
+      "notas": "Comprovante pendente",
+      "obs1": "",
+      "obs2": "",
+      "alerta": "Verificar documento",
+      "nomeEvento": "Maratona Internacional 2027"
+    }
+  ]
+}

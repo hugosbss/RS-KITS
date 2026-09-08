@@ -1,0 +1,13 @@
+# Dependências do protótipo desktop (Python 3.10+)
+fastapi>=0.115
+uvicorn>=0.34
+pydantic>=2
+python-multipart>=0.0.18
+
+# Janela nativa (OPCIONAL). Sem ela, o protótipo abre no navegador padrão.
+# No Linux instale também o GTK/WebKit do sistema:
+#   sudo apt install python3-gi gir1.2-webkit2-4.1
+# pywebview>=5.4
+
+# Empacotar como executável único (OPCIONAL, fase futura):
+# pyinstaller>=6.0

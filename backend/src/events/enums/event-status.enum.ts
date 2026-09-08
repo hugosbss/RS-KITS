@@ -1,0 +1,6 @@
+export enum EventStatus {
+  RASCUNHO = 'RASCUNHO',
+  PROXIMO = 'PROXIMO',
+  EM_ANDAMENTO = 'EM_ANDAMENTO',
+  FINALIZADO = 'FINALIZADO',
+}
