@@ -50,8 +50,9 @@ LOGS_DIR = os.environ.get("RSKITS_LOGS_DIR") or os.path.join(HOME_DIR, "logs")
 CONFIG_DIR = os.environ.get("RSKITS_CONFIG_DIR") or os.path.join(HOME_DIR, "config")
 CACHE_DIR = os.environ.get("RSKITS_CACHE_DIR") or os.path.join(HOME_DIR, "cache")
 
-
-def _static_dir() -> str:
+# Release directory: pastas release/ dentro do perfil do usuário (padrão Windows:
+# %APPDATA%/RS-KITS/release). Fallback para frontend/release apenas em desenvolvimento.
+RELEASE_DIR = os.environ.get("RSKITS_RELEASE_DIR") or os.path.join(HOME_DIR, "release")
     """Diretório com o frontend estático servido pelo FastAPI.
 
     - Empacotado (frozen): pasta `static/` embutida no executável (contém o

@@ -703,26 +703,23 @@ export function SettingsShell() {
                 <span className="break-all font-medium text-slate-900">{packageModal.pkg.config.cloudUrl}</span>
               </li>
             </ul>
-
-            {packageModal.pkg.organizer && (
-              <div className="mt-4 rounded-xl bg-blue-50 p-4">
-                <p className="text-xs font-medium uppercase tracking-wide text-blue-700">Senha de acesso offline</p>
-                <p className="mt-1 text-center font-mono text-3xl font-bold tracking-widest text-blue-800">{packageModal.pkg.organizer.offlinePassword}</p>
-                <p className="mt-2 text-xs text-blue-700">Envie esta senha ao organizador — é ela que dá acesso ao executável offline (login com o e-mail/CPF do organizador).</p>
-              </div>
-            )}
-
             <div className="mt-5 flex justify-end gap-2">
               <Button variant="outline" onClick={() => setPackageModal(null)}>Fechar</Button>
-              <Button
-                onClick={() => {
-                  downloadPackage(packageModal.pkg);
-                  setPackageModal(null);
-                  showToast("Pacote baixado. Copie para a pasta desktop/packages/ e instale no executável.");
-                }}
-              >
-                <Package className="mr-1.5 h-4 w-4" /> Baixar (.rskits)
-              </Button>
+              {windowsDownload ? (
+                <a
+                  href={downloadHref(windowsDownload)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                >
+                  <Download className="h-4 w-4" /> Baixar para Windows
+                </a>
+              ) : (
+                <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-400">
+                  <Download className="h-4 w-4" /> Baixar para Windows
+                </span>
+              )}
+              <p className="truncate text-xs text-slate-400" title={windowsDownload?.file}>
+                {windowsDownload ? "Instalador Windows baixado." : "Nenhum instalador disponível."}
+              </p>
             </div>
           </div>
         </div>

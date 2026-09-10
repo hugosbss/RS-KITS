@@ -1,7 +1,7 @@
 @echo off
 REM =============================================================================
 REM Build WINDOWS do RS KITS Desktop.
-REM DEVE ser executado EM UMA MÁQUINA WINDOWS (PyInstaller nao faz cross-compile;
+REM DEVE ser executado EM UMA MAQUINA WINDOWS (PyInstaller nao faz cross-compile;
 REM nao use WSL para gerar o executavel Windows).
 REM
 REM Pipeline:
@@ -57,17 +57,30 @@ mkdir release\windows 2>nul
 copy /y "dist\RS-KITS.exe" "release\windows\RS-KITS-%VERSION%.exe" >nul
 
 echo ==^> 6. Instalador (Inno Setup 6, se iscc estiver no PATH)
-where iscc >nul 2>nul
+
+where ISCC.exe >nul 2>nul
+if errorlevel 1 goto NO_INNO
+
+set "RSKITS_VERSION=%VERSION%"
+ISCC.exe /DAppVersion=%VERSION% installer_windows.iss
 if errorlevel 1 (
-  echo AVISO: Inno Setup (iscc.exe) nao encontrado.
-  echo   Instale o Inno Setup 6 em https://jrsoftware.org/isdl.php e rode de novo.
-  echo   Enquanto isso, o executavel esta em: release\windows\RS-KITS-%VERSION%.exe
-) else (
-  set "RSKITS_VERSION=%VERSION%"
-  iscc /DAppVersion=%VERSION% installer_windows.iss
-  if errorlevel 1 exit /b 1
+  echo ERRO: Compilacao do instalador Inno Setup falhou.
+  exit /b 1
 )
 
 echo.
-echo Pronto! Artefatos em desktop\release\windows\: %VERSION%
+echo Build concluido com sucesso! Artefatos em desktop\release\windows\ : %VERSION%
 dir /b release\windows
+exit /b 0
+
+:NO_INNO
+echo.
+echo AVISO: Inno Setup (ISCC.exe) nao encontrado no PATH.
+echo   Instale o Inno Setup 6 em https://jrsoftware.org/isdl.php e rode de novo.
+echo.
+echo   Enquanto isso, o executavel foi gerado com sucesso em:
+echo     release\windows\RS-KITS-%VERSION%.exe
+echo.
+echo   O instalador RS-KITS-Setup-%VERSION%.exe sera gerado apos instalar o Inno Setup.
+dir /b release\windows
+exit /b 0

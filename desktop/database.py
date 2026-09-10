@@ -155,11 +155,21 @@ def seed() -> None:
     """Só garante a conta de administrador. Os dados reais vêm do pacote .rksits."""
     conn = get_conn()
     try:
-        conn.execute(
-            "INSERT OR IGNORE INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
-            " VALUES ('admin', 'admin', 'admin@rskits.local', '000.000.000-00', ?, 'ADMIN', ?, ?)",
-            (hash_password("admin"), now(), now()),
-        )
+        # Verifica se já existe um admin; se sim, atualiza e-mail/senha.
+        existing = conn.execute(
+            "SELECT id, email, password_hash FROM users WHERE role = 'ADMIN'"
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE users SET email = ?, password_hash = ? WHERE role = 'ADMIN'",
+                ("admin@sportdelivery.com", hash_password("admin123")),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
+                " VALUES ('admin', 'Administrador', 'admin@sportdelivery.com', '000.000.000-00', ?, 'ADMIN', ?, ?)",
+                (hash_password("admin123"), now(), now()),
+            )
         conn.commit()
     finally:
         conn.close()
