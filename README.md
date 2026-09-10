@@ -6,28 +6,43 @@ Sistema de entrega de kits para eventos esportivos, com modo web e executável d
 
 - `frontend/` — interface Next.js (web e desktop)
 - `backend/` — API central NestJS + Prisma (sync online)
-- `desktop/` — aplicativo instalado: Python/FastAPI + SQLite + Electron
+- `desktop/` — aplicativo instalado: PyWebView (janela nativa) + FastAPI + SQLite
+
+## Arquitetura do desktop
+
+```
+Next.js (frontend/out, estático)
+        ↓
+PyWebView (janela nativa — sem Electron, sem navegador externo)
+        ↓
+FastAPI local (127.0.0.1:19090) → /api/health
+        ↓
+SQLite (perfil do usuário, nunca na pasta de instalação)
+```
+
+- Windows: dados em `%APPDATA%\RS-KITS\` · Linux: `~/.config/RS-KITS/`
+- Banco: `database/rskits.sqlite` (nunca em `Program Files`; atualizar/reinstalar não apaga dados)
+- Segunda tela e bridge JS↔Python (`window.rskits` / `window.pywebview.api`) dentro do próprio app
 
 ## O que já foi feito
 
-- **Backend local (FastAPI)**: API Python em `desktop/`, banco SQLite no perfil do usuário (`%AppData%/RS-KITS` no Windows, `~/.config/RS-KITS` no Linux), migração automática do banco antigo.
-- **Adapter local**: `server.py` fala o contrato do frontend (Bearer `access_token`, `/auth/register`, campos camelCase `createdAt`/`organizerId`, `distancia`/`nascimento`, vínculo `/events/{id}/organizers`, PATCH com todos os campos de entrega) — preservando o `X-Userid` legado.
-- **Frontend (Next.js)**: rotas de login, dashboard, entrega de kit, segunda tela, eventos, filtros, import, relatórios e configurações. Tela de Entrega com busca, PIN, entrega/estorno, zerar entregas, sorteio com filtros, edição de atleta e segunda tela.
-- **Shell Electron**: janela nativa, ícone próprio, menu, segunda tela em segundo monitor, spawn automático do backend, healthcheck, servidor estático do build do Next, auto-update configurado, dados em `RS-KITS`.
-- **Build estático do Next**: `NEXT_DESKTOP=1` gera `frontend/out` com a API local embutida (`NEXT_PUBLIC_API_URL`).
-- **Builders**: `desktop/build_exe.sh` (backend PyInstaller) e `desktop/build_desktop.sh` (ícones + backend + Next + electron-builder).
-- **Validações**: smoke do backend passou; harness das rotas do SPA para ADMIN/OPERADOR/ORGANIZADOR sem erros; testes HTTP do adapter e boot real do Electron (backend :19090, frontend :19091) OK.
-- **Registro técnico completo** em `task.md`.
+- **Backend local (FastAPI)**: API Python em `desktop/`, SQLite no perfil do usuário, contrato do frontend (Bearer `access_token`, campos camelCase `createdAt`/`organizerId`, `distancia`/`nascimento`).
+- **Frontend (Next.js)**: login, dashboard, entrega de kit, segunda tela, eventos, filtros, import, relatórios e configurações. Entrega com busca, entrega/estorno, zerar entregas, sorteio com filtros, edição de atleta e segunda tela.
+- **Shell PyWebView**: `desktop/main.py` sobe a API, injeta a ponte JS e abre a janela; `--no-window` para headless/CI.
+- **Build estático**: `NEXT_DESKTOP=1` gera `frontend/out` com a API local embutida (`NEXT_PUBLIC_API_URL=http://127.0.0.1:19090/api`).
+- **Builders**: `desktop/build_linux.sh` (Linux) e `desktop/build_windows.bat` + `installer_windows.iss` (Windows).
+- **Downloads**: backend web serve os instaladores em `GET /api/downloads` (pasta `backend/downloads/`); o frontend em `Settings` mostra os botões Windows/Linux; o desktop também expõe a mesma rota local.
+- **Pacote de evento `.rksits`**: geração/instalação separada do instalador do aplicativo (Settings → "Gerar executável (.rksits)").
 
-## O que falta
+## Como rodar (web / dev)
 
-1. **Instalador** — rodar `./build_desktop.sh` completo (PyInstaller do backend + electron-builder) e definir a **URL real de release** do auto-update (hoje placeholder).
-2. **Sync com NestJS** — validar ponta a ponta `sync.py` ↔ `backend/` (fila offline → push/pull quando volta a internet).
-3. **UX da tela de Entrega** — ajuste fino conforme AGENTS.md (ex.: `DeliveryEventModal` ainda não ligado ao cabeçalho; cores de status verde/amarelo já previstas).
-4. **Teste em máquina limpa** — instalar o `.exe`/AppImage e conferir o fluxo offline completo: abrir → logar → importar → entregar → fechar → reabrir.
+- Desenvolvimento (web): NestJS `:3001` + Next `:3000` (`npm run dev` no `backend/` e `frontend/`)
+- Desktop em dev: `cd desktop && python3 main.py` (usa `../frontend/out`)
 
-## Como rodar
+## Build do produto
 
-- Desenvolvimento (web): `npm run dev` (NestJS :3001 + Next :3000)
-- Desktop em dev: `desktop/electron` com `npm run dev` (usa `next dev` :3000) ou o static server local (:19091)
-- Build do produto: `bash desktop/build_desktop.sh`
+- Linux: `cd desktop && bash build_linux.sh` → `release/linux/RS-KITS-<versão>.AppImage`
+- Windows (em máquina Windows): `cd desktop && build_windows.bat` → `release\windows\RS-KITS-Setup-<versão>.exe`
+- Publicar instaladores no web: `backend/scripts/copy-desktop-releases.sh` → `backend/downloads/`
+
+Mais detalhes em `desktop/README.md`.

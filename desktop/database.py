@@ -1,11 +1,9 @@
 import hashlib
-import os
 import sqlite3
 import uuid
 from datetime import datetime
 
 from config import DB_PATH, ensure_dirs
-import config as config_mod
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -131,24 +129,8 @@ def verify_password(password: str, password_hash: str) -> bool:
     return hash_password(password) == password_hash
 
 
-def _migrate_legacy_db() -> None:
-    """Copia o banco legado (rskits_local.db, protótipo) para o novo local, uma vez só."""
-    if os.path.exists(DB_PATH):
-        return
-    legacy = os.path.join(os.path.dirname(config_mod.__file__), "sqlite", "rskits_local.db")
-    if os.path.exists(legacy):
-        os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-        try:
-            import shutil
-
-            shutil.copy2(legacy, DB_PATH)
-        except OSError:
-            pass
-
-
 def get_conn() -> sqlite3.Connection:
     ensure_dirs()
-    _migrate_legacy_db()
     conn = sqlite3.connect(DB_PATH, timeout=5)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")

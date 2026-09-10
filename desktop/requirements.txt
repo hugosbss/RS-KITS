@@ -1,13 +1,16 @@
-# Dependências do protótipo desktop (Python 3.10+)
+# Dependências do aplicativo desktop RS KITS (Python 3.10+)
+#
+# Janela nativa (OBRIGATÓRIO) — sem ela o aplicativo NÃO abre e encerra com erro.
+#   Windows: usa Microsoft Edge WebView2 como motor interno da janela. É preciso
+#            ter o WebView2 Runtime instalado (embutido no instalador do produto).
+#   Linux:   requer GTK/WebKit — instale os pacotes do sistema antes de rodar/builidar:
+#            sudo apt install python3-gi gir1.2-webkit2-4.1
+#            (antes de rodar ou gerar o build)
 fastapi>=0.115
 uvicorn>=0.34
 pydantic>=2
 python-multipart>=0.0.18
+pywebview>=5.4
 
-# Janela nativa (OPCIONAL). Sem ela, o protótipo abre no navegador padrão.
-# No Linux instale também o GTK/WebKit do sistema:
-#   sudo apt install python3-gi gir1.2-webkit2-4.1
-# pywebview>=5.4
-
-# Empacotar como executável único (OPCIONAL, fase futura):
-# pyinstaller>=6.0
+# Empacotar executável (PyInstaller) — usado pelos scripts de build.
+pyinstaller>=6.0

@@ -28,8 +28,14 @@ import { EventLinkCombobox } from "./combobox-event-link";
 import { TOAST_DURATION_MS, EMPTY_EVENT_FORM, toPlace, splitPlace } from "./types";
 import type { AdminOption } from "./types";
 
-const downloadHref = (download: AppDownload) =>
-  new URL(download.url, `${API_URL}/`).href;
+const downloadHref = (download: AppDownload) => {
+  // Compatível com API_URL relativa (web, /api) e absoluta (desktop,
+  // http://127.0.0.1:19090/api). download.url é sempre um caminho absoluto.
+  const base = API_URL.startsWith("http")
+    ? API_URL
+    : `${window.location.origin}${API_URL}`;
+  return new URL(download.url, base.endsWith("/") ? base : `${base}/`).href;
+};
 
 export function SettingsShell() {
   const { currentUser, users, events, athletesByEvent, createUser, updateUser, deleteUser, createEvent, updateEvent, deleteEvent, token } = useAppState();
@@ -51,7 +57,17 @@ export function SettingsShell() {
   const [packageModal, setPackageModal] = useState<{ pkg: RSKITSPackage; organizerName?: string } | null>(null);
   const [downloads, setDownloads] = useState<AppDownload[]>([]);
   const isAdmin = currentUser.role === "ADMIN";
-  const windowsDownload = downloads.find((d) => d.platform === "windows") ?? null;
+  // Prefere o instalador oficial por plataforma: RS-KITS-Setup-*.exe (Windows)
+  // e RS-KITS-*.AppImage (Linux); outros artefatos (exe puro, deb) ficam só
+  // como alternativa caso o instalador ainda não tenha sido publicado.
+  const windowsDownload =
+    downloads.filter((d) => d.platform === "windows").sort(
+      (a, b) => Number(/setup/i.test(b.file)) - Number(/setup/i.test(a.file)),
+    )[0] ?? null;
+  const linuxDownload =
+    downloads.filter((d) => d.platform === "linux").sort(
+      (a, b) => Number(/\.appimage$/i.test(b.file)) - Number(/\.appimage$/i.test(a.file)),
+    )[0] ?? null;
 
   const showToast = useCallback((message: string, error = false) => {
     setToast({ message, error });
@@ -607,6 +623,16 @@ export function SettingsShell() {
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-600 hover:text-blue-600"
                               aria-label={`Baixar o aplicativo para Windows`}
                               title="Baixar aplicativo para Windows"
+                            >
+                              <Download className="h-4 w-4" />
+                            </a>
+                          )}
+                          {linuxDownload && (
+                            <a
+                              href={downloadHref(linuxDownload)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-600 hover:text-blue-600"
+                              aria-label={`Baixar o aplicativo para Linux`}
+                              title="Baixar aplicativo para Linux"
                             >
                               <Download className="h-4 w-4" />
                             </a>

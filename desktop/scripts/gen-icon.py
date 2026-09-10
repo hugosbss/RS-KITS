@@ -2,7 +2,7 @@
 """Gera os ícones do RS KITS (PNG 512 + ICO 256) sem dependências (stdlib).
 
 Uso:
-    python3 scripts/gen-icon.py --out desktop/electron/assets
+    python3 scripts/gen-icon.py --out build/assets
 """
 import argparse
 import math
@@ -98,7 +98,7 @@ def main():
     with open(os.path.join(args.out, "icon.png"), "wb") as f:
         f.write(png_bytes(raw512, 512))
 
-    # ICO com PNG 256 embutido (formato aceito pelo electron-builder).
+    # ICO com PNG 256 embutido (aceito pelo executável/instalador do Windows).
     raw256 = render(256)
     with open(os.path.join(args.out, "icon.ico"), "wb") as f:
         f.write(ico_bytes(png_bytes(raw256, 256)))

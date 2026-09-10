@@ -906,6 +906,74 @@ def install_package(request: Request, payload: InstallRequest):
 
 
 # --------------------------------------------------------------------------- #
+# Downloads (instaladores) — mesmo contrato do backend web
+# --------------------------------------------------------------------------- #
+RELEASE_PLATFORM = re.compile(r"\.(exe)$|win\.zip$|\.msi$", re.I)
+LINUX_PLATFORM = re.compile(r"\.(AppImage)$|\.(deb)$|\.(rpm)$", re.I)
+
+
+def _release_platform(filename: str) -> str:
+    if RELEASE_PLATFORM.search(filename):
+        return "windows"
+    if LINUX_PLATFORM.search(filename):
+        return "linux"
+    if filename.lower().endswith(".dmg"):
+        return "mac"
+    return "outro"
+
+
+def _iter_releases() -> list[dict]:
+    """Lista apenas arquivos que existem fisicamente em release/windows|linux."""
+    items: list[dict] = []
+    base = config.RELEASE_DIR
+    for subfolder in ("windows", "linux"):
+        folder = os.path.join(base, subfolder)
+        if not os.path.isdir(folder):
+            continue
+        for entry in sorted(os.listdir(folder)):
+            full = os.path.join(folder, entry)
+            if not os.path.isfile(full):
+                continue
+            platform = _release_platform(entry)
+            # Não confundir pacote de evento (.rksits) com instalador.
+            if platform not in ("windows", "linux"):
+                continue
+            items.append({
+                "platform": platform,
+                "file": entry,
+                "size": os.path.getsize(full),
+                "url": f"/api/downloads/{entry}",
+            })
+    return items
+
+
+@app.get("/api/downloads")
+def list_downloads():
+    return _iter_releases()
+
+
+@app.get("/api/downloads/{filename}")
+def download_file(filename: str):
+    safe = os.path.basename(filename)
+    if safe != filename:
+        raise HTTPException(404, "Arquivo inválido.")
+    base = config.RELEASE_DIR
+    platform = _release_platform(safe)
+    subfolder = {"windows": "windows", "linux": "linux"}.get(platform)
+    if not subfolder:
+        raise HTTPException(404, "Arquivo inválido.")
+    full = os.path.join(base, subfolder, safe)
+    if not os.path.isfile(full):
+        raise HTTPException(404, "Arquivo não encontrado.")
+    return FileResponse(
+        full,
+        media_type="application/octet-stream",
+        filename=safe,
+        headers={"Content-Disposition": f'attachment; filename="{safe}"'},
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Frontend + static
 # --------------------------------------------------------------------------- #
 @app.get("/")

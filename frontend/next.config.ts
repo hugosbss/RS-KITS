@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
 };
 
-// Build "desktop" (Electron): gera saída 100% estática (out/) servida localmente.
+// Build "desktop" (PyWebView): gera saída 100% estática (out/) servida na janela nativa.
 if (process.env.NEXT_DESKTOP === '1') {
   nextConfig.output = 'export';
   nextConfig.trailingSlash = true;

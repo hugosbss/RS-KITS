@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=RS KITS - Entrega de Kits
-Comment=Executável offline de entrega de kits
-Exec=/home/hugo/RSKITS/desktop/dist/rskits
-Path=/home/hugo/RSKITS/desktop
-Terminal=false
-Categories=Office;Database;

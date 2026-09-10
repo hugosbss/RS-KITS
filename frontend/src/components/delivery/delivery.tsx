@@ -173,6 +173,18 @@ export function DeliveryShell() {
     const toggleStatusFilter = (status: DeliveryStatus) => setStatusFilter((current) => current === status ? "TODOS" : status);
 
     const openSecondScreen = () => {
+        const bridge = (window as unknown as { rskits?: { openSecondScreen?: () => void }; pywebview?: { api?: { open_second_screen?: () => void } } })
+            ?? {};
+        const rskits = bridge.rskits;
+        const pyapi = bridge.pywebview?.api;
+        if (typeof rskits?.openSecondScreen === "function") {
+            rskits.openSecondScreen();
+            return;
+        }
+        if (typeof pyapi?.open_second_screen === "function") {
+            pyapi.open_second_screen();
+            return;
+        }
         window.open("/delivery/second-screen", "_blank", "noopener,noreferrer");
     };
 

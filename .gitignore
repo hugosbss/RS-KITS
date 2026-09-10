@@ -50,6 +50,14 @@ coverage/
 # Empacotamentos do desktop (win-unpacked, .zip, .exe, AppImage, deb)
 release/
 
+# Desktop (venv, bancos de desenvolvimento, artefatos de build)
+desktop/.venv/
+desktop/sqlite/
+desktop/electron/
+desktop/cloud_data/
+desktop/prereqs/
+desktop/app.log
+
 # Builds de apoio regeneráveis
 backend/web/
 *.tsbuildinfo

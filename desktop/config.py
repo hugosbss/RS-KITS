@@ -1,38 +1,34 @@
 """Configurações do RS KITS Desktop.
 
-Local dos dados do usuário (perfil), seguindo o padrão de cada SO:
+Dados do usuário (perfil), seguindo o padrão de cada SO:
   Windows -> %APPDATA%\\RS-KITS        (C:\\Users\\<user>\\AppData\\Roaming\\RS-KITS)
   macOS   -> ~/Library/Application Support/RS-KITS
-  Linux   -> $XDG_CONFIG_HOME/RS-KITS (padrão ~/.config/RS-KITS)
+  Linux   -> $XDG_CONFIG_HOME/RS-KITS  (padrão ~/.config/RS-KITS)
 
 Estrutura dentro do perfil:
-  database/  -> rskits.sqlite (banco local)
+  database/  -> rskits.sqlite (banco local, único)
   packages/  -> pacotes .rksits instalados
-  logs/      -> logs do backend
+  logs/      -> app.log e backend.log
   config/    -> configurações do app
-  cache/     -> cache temporário
+  cache/     -> cache temporário / dados de nuvem
+
+O banco NUNCA fica na pasta de instalação (Program Files, dist/release),
+mantendo os dados do usuário intactos entre atualizações/reinstalações.
 """
 
 import os
 import sys
 
 
-def _runtime_dir() -> str:
-    """Pasta onde ficam recursos de runtime do executável (não os dados)."""
-    if getattr(sys, "frozen", False):
-        return os.path.dirname(os.path.abspath(sys.executable))
-    return os.path.dirname(os.path.abspath(__file__))
-
-
 def _resource_dir() -> str:
-    """Pasta dos recursos empacotados (static) — _MEIPASS quando congelado."""
+    """Pasta dos recursos empacotados (static, assets) — _MEIPASS quando congelado."""
     if getattr(sys, "frozen", False):
-        return getattr(sys, "_MEIPASS", _runtime_dir())
+        return getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(sys.executable)))
     return os.path.dirname(os.path.abspath(__file__))
 
 
 def _user_home_dir() -> str:
-    """Pasta de perfil do usuário do aplicativo (AppData/RS-KITS)."""
+    """Pasta de perfil do usuário do aplicativo (%APPDATA%/RS-KITS ou ~/.config/RS-KITS)."""
     if os.environ.get("RSKITS_HOME"):
         return os.path.abspath(os.environ["RSKITS_HOME"])
     if sys.platform.startswith("win"):
@@ -44,27 +40,44 @@ def _user_home_dir() -> str:
     return os.path.join(base, "RS-KITS")
 
 
-BASE_DIR = _runtime_dir()
 RESOURCE_DIR = _resource_dir()
 HOME_DIR = _user_home_dir()
 
-# Em desenvolvimento (python direto), mantém os dados próximos ao código
-# (desktop/sqlite) para não poluir o perfil do usuário. No executável e no
-# Electron (que seta RSKITS_HOME), os dados vão para o perfil do usuário.
-DATA_DIR = os.environ.get("RSKITS_DATA_DIR") or (
-    os.path.join(HOME_DIR, "database") if getattr(sys, "frozen", False) or os.environ.get("RSKITS_HOME")
-    else os.path.join(BASE_DIR, "sqlite")
-)
+DATA_DIR = os.environ.get("RSKITS_DATA_DIR") or os.path.join(HOME_DIR, "database")
 DB_PATH = os.path.join(DATA_DIR, "rskits.sqlite")
-PACKAGES_DIR = os.environ.get("RSKITS_PACKAGES_DIR") or (
-    os.path.join(HOME_DIR, "packages") if getattr(sys, "frozen", False) or os.environ.get("RSKITS_HOME")
-    else os.path.join(BASE_DIR, "packages")
-)
+PACKAGES_DIR = os.environ.get("RSKITS_PACKAGES_DIR") or os.path.join(HOME_DIR, "packages")
 LOGS_DIR = os.environ.get("RSKITS_LOGS_DIR") or os.path.join(HOME_DIR, "logs")
 CONFIG_DIR = os.environ.get("RSKITS_CONFIG_DIR") or os.path.join(HOME_DIR, "config")
 CACHE_DIR = os.environ.get("RSKITS_CACHE_DIR") or os.path.join(HOME_DIR, "cache")
 
-STATIC_DIR = os.path.join(RESOURCE_DIR, "static")
+
+def _static_dir() -> str:
+    """Diretório com o frontend estático servido pelo FastAPI.
+
+    - Empacotado (frozen): pasta `static/` embutida no executável (contém o
+      build do Next.js copiado pelo build/build_linux.sh, build_windows.bat).
+    - Desenvolvimento (python direto): usa `frontend/out` quando existir
+      (rastreado via NEXT_DESKTOP=1).
+    """
+    env = os.environ.get("RSKITS_STATIC_DIR")
+    if env and os.path.isdir(env) and os.path.exists(os.path.join(env, "index.html")):
+        return os.path.abspath(env)
+
+    if getattr(sys, "frozen", False):
+        return os.path.join(RESOURCE_DIR, "static")
+
+    candidates = [
+        os.path.join(os.path.dirname(RESOURCE_DIR), "frontend", "out"),  # build do Next.js
+    ]
+    for candidate in candidates:
+        if os.path.isdir(candidate) and os.path.exists(os.path.join(candidate, "index.html")):
+            return candidate
+    return candidates[0]
+
+
+STATIC_DIR = _static_dir()
+RELEASE_DIR = os.environ.get("RSKITS_RELEASE_DIR") or os.path.join(RESOURCE_DIR, "release")
+
 CLOUD_DATA_DIR = os.environ.get("RSKITS_CLOUD_DATA") or os.path.join(CACHE_DIR, "cloud")
 
 PORT = int(os.environ.get("RSKITS_PORT", "19090"))
