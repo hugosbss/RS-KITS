@@ -294,8 +294,8 @@ def upsert_athletes(event_id: str, rows: list[dict], usuario: str | None = None)
 def login(payload: LoginRequest):
     identifier = payload.identifier.strip()
     row = db.fetch_one(
-        "SELECT * FROM users WHERE TRIM(email) = ? OR TRIM(cpf) = ? OR TRIM(name) = ?",
-        (identifier, identifier, identifier),
+        "SELECT * FROM users WHERE TRIM(email) = ? OR TRIM(cpf) = ? OR TRIM(name) = ? OR id = ?",
+        (identifier, identifier, identifier, identifier),
     )
     if not row or not db.verify_password(payload.password, row["password_hash"]):
         raise HTTPException(401, "Identificador ou senha inválidos.")
