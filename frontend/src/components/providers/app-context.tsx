@@ -13,6 +13,7 @@ import {
   updateEventBackend as apiUpdateEvent,
   deleteEventBackend as apiDeleteEvent,
   fetchEvents as apiFetchEvents,
+  fetchActiveEventId as apiFetchActiveEventId,
   fetchAthletes as apiFetchAthletes,
   importAthletesBackend as apiImportAthletes,
   updateAthleteBackend as apiUpdateAthlete,
@@ -70,15 +71,9 @@ type AppContextValue = {
   logout: () => void;
 };
 
-const INITIAL_USERS: AppUser[] = [
-  { id: "admin", role: "ADMIN", name: "Administrador RS KITS", cpf: "000.000.000-00", password: "admin123" },
-  { id: "organizador-demo", role: "ORGANIZADOR", name: "Organizador Demonstração", cpf: "111.111.111-11", password: "organizador123", accessCode: "ORG-2027", phone: "(14) 99999-0001" },
-  { id: "operador-demo", role: "OPERADOR", name: "Operador Demonstração", cpf: "222.222.222-22", password: "operador123", organizerId: "organizador-demo" },
-];
+const INITIAL_USERS: AppUser[] = [];
 
-const INITIAL_EVENTS: AppEvent[] = [
-  { id: "maratona-2027", name: "Maratona Internacional 2027", date: "15/08/2027", place: "São Paulo, SP", organizer: "RS KITS", status: "EM_ANDAMENTO" },
-];
+const INITIAL_EVENTS: AppEvent[] = [];
 
 const AppContext = createContext<AppContextValue | null>(null);
 const storageKey = "rs-kits-frontend-state";
@@ -164,7 +159,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [users, setUsers] = useState(INITIAL_USERS);
   const [events, setEvents] = useState(INITIAL_EVENTS);
-  const [selectedEventId, setSelectedEventId] = useState<string | null>(INITIAL_EVENTS[0].id);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [athletesByEvent, setAthletesByEvent] = useState<Record<string, ImportedRow[]>>({});
   const [auth, setAuth] = useState<{ token: string; user: BackendUser } | null>(null);
@@ -208,15 +203,28 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   // Carrega a lista de eventos do backend quando autenticado.
   // Sempre substitui a lista por eventos vindos do banco (mesmo se vazia).
+  // No desktop, o pacote de distribuição (.rksits) define o evento ativo:
+  // ele tem prioridade sobre qualquer seleção antiga persistida localmente,
+  // para nunca abrir silenciosamente um evento desatualizado do SQLite.
   useEffect(() => {
     if (!hydrated || !auth) return;
     apiFetchEvents(auth.token)
       .then((list) => {
         const mapped = list.map(mapBackendEvent);
         setEvents(mapped);
-        setSelectedEventId((current) =>
-          mapped.some((event) => event.id === current) ? current : (mapped[0]?.id ?? null),
-        );
+        const preserveSelection = () =>
+          setSelectedEventId((current) =>
+            mapped.some((event) => event.id === current) ? current : (mapped[0]?.id ?? null),
+          );
+        apiFetchActiveEventId(auth.token)
+          .then((activeId) => {
+            if (activeId && mapped.some((event) => event.id === activeId)) {
+              setSelectedEventId(activeId);
+            } else {
+              preserveSelection();
+            }
+          })
+          .catch(preserveSelection);
       })
       .catch(() => {
         // mantém eventos locais se o backend estiver indisponível
@@ -287,6 +295,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             password: user.password ?? "",
             role: user.role === "OPERADOR" ? "OPERATOR" : user.role,
             phone: user.phone,
+            ...(user.accessCode ? { accessCode: user.accessCode } : {}),
           },
           auth.token,
         );

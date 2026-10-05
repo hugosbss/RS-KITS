@@ -22,7 +22,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.identifier, dto.password);
+    return this.authService.login(dto.identifier, dto.password, dto.deviceId);
   }
 
   // Criação de usuários protegida por JWT + roles.

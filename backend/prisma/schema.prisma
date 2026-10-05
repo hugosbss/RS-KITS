@@ -26,6 +26,8 @@ model User {
   email        String?   @unique
   cpf          String?   @unique
   cnpj         String?   @unique
+  /// Identificador alternativo de login (organizadores). Não substitui a senha.
+  accessCode   String?   @unique
   passwordHash String
   role         UserRole  @default(OPERATOR)
   phone        String?
@@ -36,6 +38,7 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  @@index([organizerId])
   @@map("users")
 }
 
@@ -45,6 +48,8 @@ model Event {
   date      DateTime
   place     String?
   status    EventStatus @default(RASCUNHO)
+  /// Versão para controle de concorrência otimista (incrementada a cada gravação).
+  version   Int         @default(1)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
@@ -114,11 +119,79 @@ model Athlete {
   emailEntrega   String?
   terceiro       Boolean   @default(false)
 
+  /// Versão para controle de concorrência otimista por atleta.
+  version        Int       @default(1)
+
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId])
+  @@index([eventId, num])
   @@map("athletes")
+}
+
+// ---------------------------------------------------------------------------
+// Sincronização (desktop <-> web)
+// ---------------------------------------------------------------------------
+
+/// Registro de idempotência: cada operationId é aplicada no máximo uma vez.
+model SyncOperation {
+  operationId String   @id
+  userId      String
+  deviceId    String
+  eventId     String?
+  entityType  String
+  entityId    String
+  baseVersion Int?
+  opType      String
+  status      String   @default("APPLIED")
+  detail      String?
+  appliedAt   DateTime @default(now())
+
+  @@index([eventId])
+  @@index([userId])
+  @@map("sync_operations")
+}
+
+/// Histórico central incremental. `seq` é o cursor devolvido no pull.
+model SyncChange {
+  seq        Int      @id @default(autoincrement())
+  eventId    String?
+  entityType String
+  entityId   String
+  version    Int
+  op         String   @default("UPSERT")
+  payload    Json?
+  deleted    Boolean  @default(false)
+  deviceId   String?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  @@index([eventId, seq])
+  @@index([seq])
+  @@map("sync_changes")
+}
+
+/// Conflito detectado no push. A operação local é preservada até a resolução.
+model SyncConflict {
+  id            String   @id @default(uuid())
+  operationId   String
+  userId        String
+  eventId       String
+  entityType    String
+  entityId      String
+  baseVersion   Int
+  centralVersion Int
+  localPayload  Json?
+  centralPayload Json?
+  status        String   @default("OPEN")
+  resolution    String?
+  resolvedById  String?
+  resolvedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  @@index([eventId, status])
+  @@map("sync_conflicts")
 }

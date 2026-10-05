@@ -59,8 +59,28 @@ copy /y "dist\RS-KITS.exe" "release\windows\RS-KITS-%VERSION%.exe" >nul
 echo ==^> 6. Instalador (Inno Setup 6, se iscc estiver no PATH)
 
 where ISCC.exe >nul 2>nul
-if errorlevel 1 goto NO_INNO
+if not errorlevel 1 goto INNO_FOUND
 
+rem ISCC nao esta no PATH: procura nas pastas padrao de instalacao do Inno Setup 6
+set "ISCC_EXE="
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if "%ISCC_EXE%"=="" if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if "%ISCC_EXE%"=="" if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
+if "%ISCC_EXE%"=="" goto NO_INNO
+
+set "RSKITS_VERSION=%VERSION%"
+"%ISCC_EXE%" /DAppVersion=%VERSION% installer_windows.iss
+if errorlevel 1 (
+  echo ERRO: Compilacao do instalador Inno Setup falhou.
+  exit /b 1
+)
+
+echo.
+echo Build concluido com sucesso! Artefatos em desktop\release\windows\ : %VERSION%
+dir /b release\windows
+exit /b 0
+
+:INNO_FOUND
 set "RSKITS_VERSION=%VERSION%"
 ISCC.exe /DAppVersion=%VERSION% installer_windows.iss
 if errorlevel 1 (

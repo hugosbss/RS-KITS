@@ -152,31 +152,35 @@ def init_db() -> None:
 
 
 def seed() -> None:
-    """Só garante a conta de administrador. Os dados reais vêm do pacote .rksits."""
+    """Garante a conta de administrador padrão (admin@rksits.com / admin123).
+
+    Idempotente: banco novo cria somente o ADMIN. Banco existente apenas
+    garante que o usuário 'admin' exista com a role ADMIN, sem duplicar,
+    sem apagar e sem resetar a senha de usuários existentes.
+    """
     conn = get_conn()
     try:
-        # Admin principal (sportdelivery)
-        conn.execute(
-            "INSERT OR IGNORE INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
-            " VALUES ('admin', 'Administrador', 'admin@sportdelivery.com', '000.000.000-00', ?, 'ADMIN', ?, ?)",
-            (hash_password("admin123"), now(), now()),
-        )
-        conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = 'admin'",
-            (hash_password("admin123"),),
-        )
-
-        # Admin simplificado (admin / admin)
-        conn.execute(
-            "INSERT OR IGNORE INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
-            " VALUES ('admin2', 'Admin', 'admin', NULL, ?, 'ADMIN', ?, ?)",
-            (hash_password("admin"), now(), now()),
-        )
-        conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = 'admin2'",
-            (hash_password("admin"),),
-        )
-
+        row = conn.execute("SELECT id, email, role FROM users WHERE id = 'admin'").fetchone()
+        if row is None:
+            conn.execute(
+                "INSERT INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
+                " VALUES ('admin', 'Administrador', 'admin@rksits.com', '000.000.000-00', ?, 'ADMIN', ?, ?)",
+                (hash_password("admin123"), now(), now()),
+            )
+        else:
+            changes = []
+            params = []
+            if row["role"] != "ADMIN":
+                changes.append("role = 'ADMIN'")
+            if not row["email"]:
+                changes.append("email = 'admin@rksits.com'")
+            if changes:
+                changes.append("updated_at = ?")
+                params.append(now())
+                params.append("admin")
+                conn.execute(
+                    f"UPDATE users SET {', '.join(changes)} WHERE id = 'admin'", params
+                )
         conn.commit()
     finally:
         conn.close()
@@ -230,6 +234,53 @@ def set_config(key: str, value: str) -> None:
 def get_config(key: str, default: str | None = None) -> str | None:
     row = fetch_one("SELECT value FROM app_config WHERE key = ?", (key,))
     return row["value"] if row else default
+
+
+def set_access_code(organizer_id: str, code: str) -> None:
+    """Armazena o código de acesso do organizador como hash (sha256)."""
+    hashed = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    set_config(f"org_code_{organizer_id}", hashed)
+
+
+def find_user_by_access_code(code: str):
+    """Resolve um ORGANIZADOR pelo código de acesso (chave `org_code_<id>`).
+
+    Aceita códigos armazenados como hash (novos) ou em texto puro (legado);
+    neste último caso, reescreve o valor como hash na migração. Nunca trata o
+    código como `name`.
+    """
+    code = code.strip()
+    if not code:
+        return None
+    hashed = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    conn = get_conn()
+    try:
+        for row in conn.execute(
+            "SELECT key, value FROM app_config WHERE key LIKE 'org_code_%'"
+        ).fetchall():
+            stored = row["value"]
+            stored_is_hash = bool(stored) and len(stored) == 64
+            if (
+                stored == hashed
+                or (stored_is_hash and stored.lower() == hashed)
+                or (not stored_is_hash and stored == code)
+            ):
+                org_id = row["key"][len("org_code_"):]
+                user = conn.execute(
+                    "SELECT * FROM users WHERE id = ? AND role = 'ORGANIZADOR'",
+                    (org_id,),
+                ).fetchone()
+                if user:
+                    if not stored_is_hash:
+                        conn.execute(
+                            "UPDATE app_config SET value = ? WHERE key = ?",
+                            (hashed, row["key"]),
+                        )
+                        conn.commit()
+                    return user
+    finally:
+        conn.close()
+    return None
 
 
 def row_to_dict(row: sqlite3.Row | None) -> dict | None:

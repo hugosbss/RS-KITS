@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Filter, Inbox, PieChart } from "lucide-react";
+import { ChevronDown, ChevronUp, Filter, Inbox, PieChart } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useAppState } from "@/components/providers/app-context";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,9 @@ type ReportRecord = {
     cidadeUf: string;
     camiseta: string;
     kit: string;
+    statusEntrega?: "PENDENTE" | "ENTREGUE" | "ESTORNADO";
+    dataEntrega?: string;
+    usuarioEntrega?: string;
 };
 
 const REPORT_TABS: { id: DynamicReportTab; label: string }[] = [
@@ -92,6 +95,9 @@ function toReportRecords(rows: ImportedRow[]): ReportRecord[] {
                 cidadeUf: row.cidadeUf || "-",
                 camiseta: row.camiseta || "-",
                 kit: row.kit || "-",
+                statusEntrega: row.statusEntrega,
+                dataEntrega: row.dataEntrega,
+                usuarioEntrega: row.usuarioEntrega,
             };
         });
 }
@@ -209,6 +215,28 @@ export function Filters() {
         })).filter((item) => item.total > 0),
     [filteredAthletes]);
 
+    const statsEntregasHora = useMemo(() => {
+        const map: Record<string, { dia: string; hora: string; usuario: string; total: number }> = {};
+        filteredAthletes.forEach((record) => {
+            if (record.statusEntrega !== "ENTREGUE" || !record.dataEntrega) return;
+            const dateMatch = record.dataEntrega.match(/^(\d{2}\/\d{2}\/\d{4})/);
+            if (!dateMatch) return;
+            const timeMatch = record.dataEntrega.match(/(\d{1,2}):(\d{2})/);
+            if (!timeMatch) return;
+            const dia = dateMatch[1];
+            const hora = timeMatch[1].padStart(2, "0");
+            const usuario = record.usuarioEntrega || "Não identificado";
+            const key = `${dia}|${hora}|${usuario}`;
+            map[key] ??= { dia, hora, usuario, total: 0 };
+            map[key].total++;
+        });
+        const parseDateTime = (dia: string, hora: string) => {
+            const [d, m, y] = dia.split("/").map(Number);
+            return new Date(y, m - 1, d, Number(hora)).getTime();
+        };
+        return Object.values(map).sort((a, b) => parseDateTime(b.dia, b.hora) - parseDateTime(a.dia, a.hora));
+    }, [filteredAthletes]);
+
     const hasFilters = filterSexo !== "TODOS" || filterModalidade !== "TODOS" || filterCidade !== "TODOS" ||
         filterCamiseta !== "TODOS" || filterFaixaEtaria !== "TODOS" || filterKit !== "TODOS";
 
@@ -275,14 +303,14 @@ export function Filters() {
                     <EmptyState title="Nenhum atleta para analisar" description="Importe os atletas do evento para visualizar os relatórios." />
                 ) : (
                     <>
-                        {subTabDinamico === "MODALIDADE" && <CardsReport title="Relatório por Modalidade / Distância" items={statsModalidade} color="blue" suffix="atletas" />}
+                        {subTabDinamico === "MODALIDADE" && <CardsReport title="Relatório por Modalidade / Distância" items={statsModalidade} color="blue" labelHeader="Modalidade / Distância" />}
                         {subTabDinamico === "EQUIPE" && <TeamReport items={statsEquipe} />}
-                        {subTabDinamico === "CIDADE" && <CardsReport title="Distribuição Geográfica por Cidade/UF" items={statsCidade} color="slate" suffix="atletas" />}
-                        {subTabDinamico === "CAMISETA" && <CardsReport title="Demanda por Tamanho de Camiseta" items={statsCamiseta} color="indigo" />}
+                        {subTabDinamico === "CIDADE" && <CardsReport title="Distribuição Geográfica por Cidade/UF" items={statsCidade} color="slate" labelHeader="Cidade / UF" />}
+                        {subTabDinamico === "CAMISETA" && <CardsReport title="Demanda por Tamanho de Camiseta" items={statsCamiseta} color="indigo" labelHeader="Tamanho" />}
                         {subTabDinamico === "SEXO" && <SexReport stats={statsSexo} />}
                         {subTabDinamico === "SEXO_DISTANCIA" && <SexDistanceReport rows={statsSexoDistancia} />}
-                        {subTabDinamico === "IDADE" && <CardsReport title="Distribuição por Faixas de Idade" items={statsFaixaEtaria} color="emerald" suffix="atletas" />}
-                        {subTabDinamico === "ENTREGAS_HORA" && <DeliveryHoursReport />}
+                        {subTabDinamico === "IDADE" && <CardsReport title="Distribuição por Faixas de Idade" items={statsFaixaEtaria} color="emerald" labelHeader="Faixa Etária" />}
+                        {subTabDinamico === "ENTREGAS_HORA" && <DeliveryHoursReport rows={statsEntregasHora} />}
                     </>
                 )}
             </main>
@@ -314,41 +342,111 @@ function EmptyState({ title, description }: { title: string; description: string
     );
 }
 
-function CardsReport({ title, items, color, suffix = "" }: { title: string; items: { label: string; total: number }[]; color: "blue" | "slate" | "indigo" | "emerald"; suffix?: string }) {
-    const colors = {
-        blue: "border-blue-200 bg-blue-50/60 text-blue-600",
-        slate: "border-slate-200 bg-slate-100 text-slate-500",
-        indigo: "border-indigo-200 bg-indigo-50/60 text-indigo-700",
-        emerald: "border-emerald-200 bg-emerald-50/60 text-emerald-800",
+function CardsReport({ title, items, color, labelHeader }: { title: string; items: { label: string; total: number }[]; color: "blue" | "slate" | "indigo" | "emerald"; labelHeader: string }) {
+    const [sort, setSort] = useState<{ column: "label" | "total"; dir: "asc" | "desc" } | null>(null);
+
+    const sortedItems = useMemo(() => {
+        if (!sort) return items;
+        const sorted = [...items].sort((a, b) =>
+            sort.column === "total" ? a.total - b.total : compareAlpha(a.label, b.label)
+        );
+        return sort.dir === "asc" ? sorted : sorted.reverse();
+    }, [items, sort]);
+
+    const toggleSort = (column: "label" | "total") => {
+        setSort((prev) =>
+            prev?.column === column ? { column, dir: prev.dir === "asc" ? "desc" : "asc" } : { column, dir: "asc" }
+        );
     };
+
+    const SortIcon = ({ column }: { column: "label" | "total" }) => {
+        if (!sort || sort.column !== column) return null;
+        return sort.dir === "asc" ? (
+            <ChevronUp className="ml-1 h-3.5 w-3.5" />
+        ) : (
+            <ChevronDown className="ml-1 h-3.5 w-3.5" />
+        );
+    };
+
     return (
         <Card className="space-y-4 border-slate-200 p-5 shadow-none">
             <h3 className="text-base font-medium text-slate-900">{title}</h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {items.map((item) => (
-                    <div key={item.label} className={`rounded-2xl border p-4 ${colors[color]}`}>
-                        <p className="text-xs font-medium uppercase">{item.label}</p>
-                        <p className="mt-1 text-3xl font-medium text-slate-900">{item.total} {suffix}</p>
-                    </div>
-                ))}
+            <div className="rounded-xl border border-slate-200">
+                <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 bg-slate-100 font-medium uppercase text-slate-600">
+                        <tr>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("label")}>
+                                <span className="inline-flex items-center">{labelHeader}<SortIcon column="label" /></span>
+                            </th>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("total")}>
+                                <span className="inline-flex items-center">Total<SortIcon column="total" /></span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                        {sortedItems.map((item) => (
+                            <tr key={item.label}>
+                                <td title={item.label} className="p-3 font-medium text-slate-900">{item.label}</td>
+                                <td className="bg-slate-50 p-3 font-medium text-blue-600">{item.total}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </Card>
     );
 }
 
 function TeamReport({ items }: { items: { label: string; total: number }[] }) {
+    const [sort, setSort] = useState<{ column: "label" | "total"; dir: "asc" | "desc" } | null>(null);
+
+    const sortedItems = useMemo(() => {
+        if (!sort) return items;
+        const sorted = [...items].sort((a, b) =>
+            sort.column === "total" ? a.total - b.total : compareAlpha(a.label, b.label)
+        );
+        return sort.dir === "asc" ? sorted : sorted.reverse();
+    }, [items, sort]);
+
+    const toggleSort = (column: "label" | "total") => {
+        setSort((prev) =>
+            prev?.column === column ? { column, dir: prev.dir === "asc" ? "desc" : "asc" } : { column, dir: "asc" }
+        );
+    };
+
+    const SortIcon = ({ column }: { column: "label" | "total" }) => {
+        if (!sort || sort.column !== column) return null;
+        return sort.dir === "asc" ? (
+            <ChevronUp className="ml-1 h-3.5 w-3.5" />
+        ) : (
+            <ChevronDown className="ml-1 h-3.5 w-3.5" />
+        );
+    };
+
     return (
         <Card className="space-y-4 border-slate-200 p-5 shadow-none">
             <h3 className="text-base font-medium text-slate-900">Ranking por Equipes / Assessorias</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {items.map((item) => (
-                    <div key={item.label} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <span className="truncate text-xs font-medium text-slate-800" title={item.label}>{item.label}</span>
-                        <span className="shrink-0 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-600">
-                            {item.total}
-                        </span>
-                    </div>
-                ))}
+            <div className="rounded-xl border border-slate-200">
+                <table className="w-full text-left text-xs">
+                    <thead className="border-b border-slate-200 bg-slate-100 font-medium uppercase text-slate-600">
+                        <tr>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("label")}>
+                                <span className="inline-flex items-center">Equipe / Assessoria<SortIcon column="label" /></span>
+                            </th>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("total")}>
+                                <span className="inline-flex items-center">Total<SortIcon column="total" /></span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                        {sortedItems.map((item) => (
+                            <tr key={item.label}>
+                                <td title={item.label} className="p-3 font-medium text-slate-900">{item.label}</td>
+                                <td className="bg-slate-50 p-3 font-medium text-blue-600">{item.total}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
         </Card>
     );
@@ -375,21 +473,57 @@ function SexReport({ stats }: { stats: { masculino: number; feminino: number; pc
 }
 
 function SexDistanceReport({ rows }: { rows: { label: string; m: number; f: number; total: number }[] }) {
+    const [sort, setSort] = useState<{ column: "label" | "m" | "f" | "total"; dir: "asc" | "desc" } | null>(null);
+
+    const sortedRows = useMemo(() => {
+        if (!sort) return rows;
+        const sorted = [...rows].sort((a, b) => {
+            if (sort.column === "m") return a.m - b.m;
+            if (sort.column === "f") return a.f - b.f;
+            if (sort.column === "total") return a.total - b.total;
+            return compareDistanceAsc(a.label, b.label);
+        });
+        return sort.dir === "asc" ? sorted : sorted.reverse();
+    }, [rows, sort]);
+
+    const toggleSort = (column: "label" | "m" | "f" | "total") => {
+        setSort((prev) =>
+            prev?.column === column ? { column, dir: prev.dir === "asc" ? "desc" : "asc" } : { column, dir: "asc" }
+        );
+    };
+
+    const SortIcon = ({ column }: { column: "label" | "m" | "f" | "total" }) => {
+        if (!sort || sort.column !== column) return null;
+        return sort.dir === "asc" ? (
+            <ChevronUp className="ml-1 h-3.5 w-3.5" />
+        ) : (
+            <ChevronDown className="ml-1 h-3.5 w-3.5" />
+        );
+    };
+
     return (
         <Card className="space-y-4 border-slate-200 p-5 shadow-none">
-            <h3 className="text-base font-medium text-slate-900">Matriz Cruzada: Sexo × Distância</h3>
+            <h3 className="text-base font-medium text-slate-900">Sexo × Distância</h3>
             <div className="rounded-xl border border-slate-200">
                 <table className="w-full text-left text-xs">
                     <thead className="border-b border-slate-200 bg-slate-100 font-medium uppercase text-slate-600">
                         <tr>
-                            <th className="p-3">Distância / Prova</th>
-                            <th className="p-3">Masculino (M)</th>
-                            <th className="p-3">Feminino (F)</th>
-                            <th className="p-3">Total</th>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("label")}>
+                                <span className="inline-flex items-center">Distância / Prova<SortIcon column="label" /></span>
+                            </th>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("m")}>
+                                <span className="inline-flex items-center">Masculino (M)<SortIcon column="m" /></span>
+                            </th>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("f")}>
+                                <span className="inline-flex items-center">Feminino (F)<SortIcon column="f" /></span>
+                            </th>
+                            <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("total")}>
+                                <span className="inline-flex items-center">Total<SortIcon column="total" /></span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                        {rows.map((row) => (
+                        {sortedRows.map((row) => (
                             <tr key={row.label}>
                                 <td className="p-3 font-medium text-slate-900">{row.label}</td>
                                 <td className="p-3 font-medium text-blue-600">{row.m} atletas</td>
@@ -404,17 +538,76 @@ function SexDistanceReport({ rows }: { rows: { label: string; m: number; f: numb
     );
 }
 
-function DeliveryHoursReport() {
+function DeliveryHoursReport({ rows }: { rows: { dia: string; hora: string; usuario: string; total: number }[] }) {
+    const [sort, setSort] = useState<{ column: "dia" | "hora" | "usuario" | "total"; dir: "asc" | "desc" } | null>(null);
+
+    const sortedRows = useMemo(() => {
+        if (!sort) return rows;
+        const sorted = [...rows].sort((a, b) => {
+            if (sort.column === "total") return a.total - b.total;
+            return compareAlpha(a[sort.column], b[sort.column]);
+        });
+        return sort.dir === "asc" ? sorted : sorted.reverse();
+    }, [rows, sort]);
+
+    const toggleSort = (column: "dia" | "hora" | "usuario" | "total") => {
+        setSort((prev) =>
+            prev?.column === column ? { column, dir: prev.dir === "asc" ? "desc" : "asc" } : { column, dir: "asc" }
+        );
+    };
+
+    const SortIcon = ({ column }: { column: "dia" | "hora" | "usuario" | "total" }) => {
+        if (!sort || sort.column !== column) return null;
+        return sort.dir === "asc" ? (
+            <ChevronUp className="ml-1 h-3.5 w-3.5" />
+        ) : (
+            <ChevronDown className="ml-1 h-3.5 w-3.5" />
+        );
+    };
+
     return (
         <Card className="space-y-4 border-slate-200 p-5 shadow-none">
             <h3 className="text-base font-medium text-slate-900">Relatório de Entregas por Dia/Hora e Operador</h3>
-            <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-                <Inbox className="h-8 w-8 text-slate-400" />
-                <p className="text-sm font-medium text-slate-700">Nenhuma entrega registrada</p>
-                <p className="max-w-md text-xs text-slate-500">
-                    Os registros de entrega (data/hora e operador responsável) aparecerão aqui assim que a entrega de kits for persistida no banco de dados.
-                </p>
-            </div>
+            {rows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+                    <Inbox className="h-8 w-8 text-slate-400" />
+                    <p className="text-sm font-medium text-slate-700">Nenhuma entrega registrada</p>
+                    <p className="max-w-md text-xs text-slate-500">
+                        Os registros de entrega (data/hora e operador responsável) aparecerão aqui assim que a entrega de kits for persistida no banco de dados.
+                    </p>
+                </div>
+            ) : (
+                <div className="rounded-xl border border-slate-200">
+                    <table className="w-full text-left text-xs">
+                        <thead className="border-b border-slate-200 bg-slate-100 font-medium uppercase text-slate-600">
+                            <tr>
+                                <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("dia")}>
+                                    <span className="inline-flex items-center">Dia<SortIcon column="dia" /></span>
+                                </th>
+                                <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("hora")}>
+                                    <span className="inline-flex items-center">Hora<SortIcon column="hora" /></span>
+                                </th>
+                                <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("usuario")}>
+                                    <span className="inline-flex items-center">Operador<SortIcon column="usuario" /></span>
+                                </th>
+                                <th className="cursor-pointer select-none p-3" onClick={() => toggleSort("total")}>
+                                    <span className="inline-flex items-center">Total<SortIcon column="total" /></span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                            {sortedRows.map((row) => (
+                                <tr key={`${row.dia}-${row.hora}-${row.usuario}`}>
+                                    <td className="p-3 font-mono font-medium text-slate-900">{row.dia}</td>
+                                    <td className="p-3 font-mono font-medium text-slate-700">{row.hora}h</td>
+                                    <td className="p-3 font-medium text-slate-900">{row.usuario}</td>
+                                    <td className="bg-slate-50 p-3 font-medium text-blue-600">{row.total}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </Card>
     );
 }

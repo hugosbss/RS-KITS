@@ -2,6 +2,7 @@
 
 import { fetchAthletes } from "@/services/api";
 import { mapBackendAthletes } from "@/components/providers/app-context";
+import { buildZip, downloadBlob, sanitizePart } from "@/services/distribution";
 import type { ImportedRow } from "@/components/import/types";
 import type { AppEvent, AppUser } from "@/components/providers/app-context";
 
@@ -21,7 +22,8 @@ export type RSKITSPackage = {
     id: string;
     name: string;
     email?: string;
-    offlinePassword: string;
+    cpf?: string;
+    cnpj?: string;
   } | null;
   config: {
     cloudUrl: string;
@@ -29,10 +31,6 @@ export type RSKITSPackage = {
   };
   athletes: ImportedRow[];
 };
-
-export function generateOfflinePassword(): string {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
 
 export function buildEventPackage(params: {
   event: AppEvent;
@@ -58,7 +56,8 @@ export function buildEventPackage(params: {
           id: params.organizer.id,
           name: params.organizer.name,
           email: params.organizer.email,
-          offlinePassword: generateOfflinePassword(),
+          cpf: params.organizer.cpf,
+          cnpj: params.organizer.cnpj,
         }
       : null,
     config: {
@@ -85,15 +84,40 @@ export async function loadPackageAthletes(
   }
 }
 
+function packageBaseName(pkg: RSKITSPackage): string {
+  return `RS-KITS-${sanitizePart(pkg.event.name).toLowerCase()}`;
+}
+
+export function distributionFileName(pkg: RSKITSPackage, installerName: string | null): string {
+  // Com instalador: um único arquivo ZIP (instalador + .rksits do evento).
+  // Sem instalador disponível: apenas o pacote de dados .rksits.
+  return installerName ? `${packageBaseName(pkg)}.zip` : `${packageBaseName(pkg)}.rksits`;
+}
+
+// Empacota instalador + dados do evento num único arquivo de distribuição.
+// A ordenação da lista coloca o instalador primeiro e o .rksits em seguida,
+// dentro do mesmo ZIP. Nunca baixa/gera nada aqui — apenas monta o artefato.
+export async function buildDistributionBlob(
+  pkg: RSKITSPackage,
+  installer: { file: string; url: string } | null,
+): Promise<Blob> {
+  const pkgBytes = new TextEncoder().encode(JSON.stringify(pkg, null, 2));
+  if (!installer) {
+    // Sem instalador (desktop sem artefato publicado): só o .rksits mesmo.
+    return new Blob([pkgBytes], { type: "application/json" });
+  }
+  const response = await fetch(installer.url);
+  if (!response.ok) {
+    throw new Error("Não foi possível carregar o instalador do aplicativo.");
+  }
+  const exeBytes = new Uint8Array(await response.arrayBuffer());
+  return buildZip([
+    { name: installer.file, data: exeBytes },
+    { name: `${packageBaseName(pkg)}.rksits`, data: pkgBytes },
+  ]);
+}
+
 export function downloadPackage(pkg: RSKITSPackage): void {
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const filename = `${(pkg.event.name || "evento").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}.rskits`;
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `${packageBaseName(pkg)}.rksits`);
 }

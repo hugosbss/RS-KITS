@@ -80,12 +80,13 @@ export function WeatherCard({ place, eventDate }: WeatherCardProps) {
     const CurrentIcon = data ? wmoIcon(data.weatherCode, data.isDay) : CloudSun;
 
     return (
-        <Card className="border-slate-200 p-5 shadow-sm">
+        <Card className="border-slate-200 p-5 shadow-sm h-64 flex flex-col">
             <div className="flex items-center justify-between">
                 <SectionTitle>Clima</SectionTitle>
                 <CurrentIcon className={`h-5 w-5 ${data ? wmoTone(data.weatherCode) : "text-amber-500"}`} />
             </div>
 
+            <div className="mt-1 flex-1 min-h-0 flex flex-col justify-center overflow-y-auto scroll-thin">
             {isLoading ? (
                 <div className="mt-5 flex items-center gap-2 text-sm text-slate-500">
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -147,6 +148,7 @@ export function WeatherCard({ place, eventDate }: WeatherCardProps) {
                     )}
                 </>
             )}
+            </div>
         </Card>
     );
 }

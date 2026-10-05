@@ -360,12 +360,12 @@ export function Dashboard() {
                 </section>
 
                 <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Card className="border-slate-200 p-5 shadow-sm">
+                    <Card className="border-slate-200 p-5 shadow-sm h-64 flex flex-col">
                         <SectionTitle>Modalidade</SectionTitle>
                         {modalidades.length === 0 ? (
                             <p className="mt-4 text-sm text-slate-500">Nenhum atleta importado.</p>
                         ) : (
-                            <div className="mt-4 space-y-4">
+                            <div className="mt-4 space-y-4 flex-1 min-h-0 overflow-y-auto scroll-thin pr-1">
                                 {modalidades.map((item, index) => {
                                     const p = total > 0 ? Math.round((item.count / total) * 100) : 0;
                                     return (
@@ -383,9 +383,9 @@ export function Dashboard() {
                             </div>
                         )}
                     </Card>
-                    <Card className="border-slate-200 p-5 shadow-sm">
+                    <Card className="border-slate-200 p-5 shadow-sm h-64 flex flex-col">
                         <SectionTitle>Kits</SectionTitle>
-                        <div className="mt-4 space-y-3">
+                        <div className="mt-4 space-y-3 flex-1 min-h-0 overflow-y-auto scroll-thin pr-1">
                             <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2">
                                 <span className="text-sm text-slate-600">Entregues</span>
                                 <span className="font-medium text-emerald-700">{entregues.toLocaleString("pt-BR")}</span>
@@ -400,9 +400,9 @@ export function Dashboard() {
                             </div>
                         </div>
                     </Card>
-                    <Card className="border-slate-200 p-5 shadow-sm">
+                    <Card className="border-slate-200 p-5 shadow-sm h-64 flex flex-col">
                         <SectionTitle>Equipes</SectionTitle>
-                        <div className="mt-4 space-y-3">
+                        <div className="mt-4 space-y-3 flex-1 min-h-0 overflow-y-auto scroll-thin pr-1">
                             {equipes.top.length === 0 && <p className="text-sm text-slate-500">Sem equipes ainda.</p>}
                             {equipes.top.map(({ label, value }) => (
                                 <div key={label} className="flex justify-between border-b border-slate-100 pb-2 text-sm">
@@ -411,16 +411,16 @@ export function Dashboard() {
                                 </div>
                             ))}
                         </div>
-                        <div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm">
+                        <div className="mt-4 shrink-0 rounded-xl bg-amber-50 p-3 text-sm">
                             <span className="font-medium">Sem equipe: {equipes.sem.toLocaleString("pt-BR")}</span>
                         </div>
                     </Card>
                 </section>
 
                 <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    <Card className="border-slate-200 p-5 shadow-sm">
+                    <Card className="border-slate-200 p-5 shadow-sm h-64 flex flex-col">
                         <SectionTitle>Cidade dos atletas</SectionTitle>
-                        <div className="mt-4 space-y-3">
+                        <div className="mt-4 space-y-3 flex-1 min-h-0 overflow-y-auto scroll-thin pr-1">
                             {cidades.top.length === 0 && cidades.sem === 0 && <p className="text-sm text-slate-500">Nenhum atleta importado.</p>}
                             {cidades.top.map(({ label, value }) => (
                                 <div key={label} className="flex items-center justify-between">
@@ -433,7 +433,7 @@ export function Dashboard() {
                             ))}
                         </div>
                         {(cidades.rest > 0 || cidades.sem > 0) && (
-                            <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3 text-sm">
+                            <div className="mt-3 shrink-0 space-y-1.5 border-t border-slate-100 pt-3 text-sm">
                                 {cidades.rest > 0 && (
                                     <div className="flex justify-between text-slate-500">
                                         <span>Outras</span>
@@ -450,9 +450,9 @@ export function Dashboard() {
                         )}
                     </Card>
                     <WeatherCard place={selectedEvent?.place} eventDate={selectedEvent?.date} />
-                    <Card className="border-slate-200 p-5 shadow-sm">
+                    <Card className="border-slate-200 p-5 shadow-sm h-64 flex flex-col">
                         <SectionTitle>Últimas atividades</SectionTitle>
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2 flex-1 min-h-0 overflow-y-auto scroll-thin pr-1">
                             {activities.length === 0 ? (
                                 <div className="col-span-full rounded-xl bg-slate-50 p-3 text-sm text-slate-500">
                                     Nenhuma atividade registrada.

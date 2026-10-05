@@ -8,11 +8,11 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: 'admin@rskits.com' },
-    update: { cpf: '000.000.000-00' },
+    update: { cpf: '00000000000' },
     create: {
       name: 'Administrador',
       email: 'admin@rskits.com',
-      cpf: '000.000.000-00',
+      cpf: '00000000000',
       passwordHash,
       role: UserRole.ADMIN,
     },

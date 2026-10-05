@@ -31,6 +31,7 @@ export type RegisterUser = {
   password: string;
   role: BackendUserRole;
   phone?: string;
+  accessCode?: string;
 };
 
 type ApiError = {
@@ -415,4 +416,16 @@ export async function fetchDownloads(): Promise<AppDownload[]> {
   const response = await fetch(`${API_URL}/downloads`);
   if (!response.ok) throw new Error("Não foi possível carregar os downloads.");
   return (await response.json()) as AppDownload[];
+}
+
+// Desktop: retorna o id do evento preparado pela distribuição (.rksits importado).
+// No modo web o endpoint não existe — a chamada falha e a seleção cai no
+// comportamento padrão (preserva a seleção atual se ela ainda existir).
+export async function fetchActiveEventId(token: string): Promise<string | null> {
+  const response = await fetch(`${API_URL}/packages`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Pacotes indisponíveis.");
+  const data = (await response.json()) as { activeEventId?: string | null };
+  return data.activeEventId ?? null;
 }

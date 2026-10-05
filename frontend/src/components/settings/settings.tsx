@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Download, KeyRound, Link2, Package, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
+import { CalendarDays, Download, KeyRound, Link2, Loader2, Package, Pencil, Search, Trash2, UserPlus, Users, X } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { useAppState, type AppUser, type AppEvent } from "@/components/providers/app-context";
 import { Button } from "@/components/ui/button";
@@ -10,10 +10,13 @@ import { Toast } from "@/components/ui/toast";
 import { maskCpf, maskCnpj } from "@/lib/utils";
 import {
   buildEventPackage,
+  buildDistributionBlob,
+  distributionFileName,
   downloadPackage,
   loadPackageAthletes,
   type RSKITSPackage,
 } from "@/services/package";
+import { downloadBlob } from "@/services/distribution";
 import {
   addEventOrganizer,
   removeEventOrganizer,
@@ -56,6 +59,16 @@ export function SettingsShell() {
   const [confirmLink, setConfirmLink] = useState<{ organizer: AppUser; currentEvent: string; otherEvent: string } | null>(null);
   const [packageModal, setPackageModal] = useState<{ pkg: RSKITSPackage; organizerName?: string } | null>(null);
   const [downloads, setDownloads] = useState<AppDownload[]>([]);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [prep, setPrep] = useState<{
+    event: AppEvent;
+    percent: number;
+    step: string;
+    status: "preparing" | "done" | "error";
+    error?: string;
+  } | null>(null);
+  const prepDownloadRef = useRef<AppDownload | null>(null);
+  const prepCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isAdmin = currentUser.role === "ADMIN";
   // Prefere o instalador oficial por plataforma: RS-KITS-Setup-*.exe (Windows)
   // e RS-KITS-*.AppImage (Linux); outros artefatos (exe puro, deb) ficam só
@@ -77,6 +90,7 @@ export function SettingsShell() {
 
   useEffect(() => () => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
+    if (prepCloseTimer.current) clearTimeout(prepCloseTimer.current);
   }, []);
 
   // Abre direto a aba "Criar evento" quando vem da tela Eventos (?tab=evento).
@@ -168,16 +182,83 @@ export function SettingsShell() {
     }
   };
 
-  const generatePackage = async (event: AppEvent) => {
+  // Monta o pacote .rksits exclusivo do evento (event.id da linha) com os
+  // atletas daquele evento e o organizador vinculado àquele evento.
+  const buildEventPackageData = async (event: AppEvent): Promise<RSKITSPackage | null> => {
     const athletes = await loadPackageAthletes(token, event.id, athletesByEvent[event.id]);
     if (athletes.length === 0) {
       showToast("Este evento ainda não possui atletas importados.");
-      return;
+      return null;
     }
     const organizerUserId = (linkedOrgIds[event.id] ?? [])[0];
     const organizer = organizerUserId ? users.find((user) => user.id === organizerUserId) ?? null : null;
-    const pkg = buildEventPackage({ event, athletes, organizer, createdBy: currentUser.name });
-    setPackageModal({ pkg, organizerName: organizer?.name });
+    return buildEventPackage({ event, athletes, organizer, createdBy: currentUser.name });
+  };
+
+  // Geração EXPLÍCITA do .rksits (botão separado de geração do executável).
+  // loading = true -> geração -> sucesso/erro -> loading = false (try/finally).
+  const generatePackage = async (event: AppEvent) => {
+    if (generatingId) return;
+    setGeneratingId(event.id);
+    try {
+      const pkg = await buildEventPackageData(event);
+      if (pkg) setPackageModal({ pkg, organizerName: pkg.organizer?.name });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Não foi possível gerar o executável.", true);
+    } finally {
+      setGeneratingId(null);
+    }
+  };
+
+  // Ação principal de distribuição (botão de download da linha e do modal).
+  // Prepara os dados do evento (0-100% reais) e só ao final baixa UM arquivo:
+  // instalador + RS-KITS-<evento>.rksits agrupados no mesmo ZIP. O .rksits
+  // NÃO é mais baixado como resultado visível deste fluxo.
+  const prepareAndDownload = async (event: AppEvent, download: AppDownload | null) => {
+    if (prep?.status === "preparing") return;
+    prepDownloadRef.current = download;
+    setPrep({ event, percent: 0, step: "Iniciando preparação", status: "preparing" });
+    try {
+      if (!event.id) throw new Error("Evento inválido.");
+
+      setPrep((p) => (p ? { ...p, percent: 20, step: "Carregando evento" } : p));
+
+      let organizerId = (linkedOrgIds[event.id] ?? [])[0];
+      if (!organizerId && token) {
+        const ids = await loadLinkedOrganizers(event.id);
+        organizerId = ids[0] ?? null;
+      }
+      setPrep((p) => (p ? { ...p, percent: 40, step: "Carregando organizador" } : p));
+      const organizer = organizerId ? users.find((user) => user.id === organizerId) ?? null : null;
+
+      setPrep((p) => (p ? { ...p, percent: 60, step: "Carregando atletas" } : p));
+      const athletes = await loadPackageAthletes(token, event.id, athletesByEvent[event.id]);
+      if (athletes.length === 0) {
+        throw new Error("Este evento ainda não possui atletas importados.");
+      }
+
+      setPrep((p) => (p ? { ...p, percent: 80, step: "Montando pacote do evento" } : p));
+      const pkg = buildEventPackage({ event, athletes, organizer, createdBy: currentUser.name });
+      const installer = download ? { file: download.file, url: downloadHref(download) } : null;
+      const blob = await buildDistributionBlob(pkg, installer);
+
+      // Preparação terminou (100%): só agora o download é iniciado.
+      setPrep((p) => (p ? { ...p, percent: 100, step: "Preparação concluída!" } : p));
+      downloadBlob(blob, distributionFileName(pkg, download?.file ?? null));
+      showToast("RS KITS do evento preparado e download iniciado.");
+      if (prepCloseTimer.current) clearTimeout(prepCloseTimer.current);
+      prepCloseTimer.current = setTimeout(() => setPrep(null), 1600);
+    } catch (err) {
+      setPrep((p) =>
+        p
+          ? {
+              ...p,
+              status: "error",
+              error: err instanceof Error ? err.message : "Não foi possível preparar o RS KITS.",
+            }
+          : p,
+      );
+    }
   };
 
   const setEventOrganizer = (organizerId: string | null) => {
@@ -620,9 +701,13 @@ export function SettingsShell() {
                           {windowsDownload && (
                             <a
                               href={downloadHref(windowsDownload)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                void prepareAndDownload(event, windowsDownload);
+                              }}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-600 hover:text-blue-600"
                               aria-label={`Baixar o aplicativo para Windows`}
-                              title="Baixar aplicativo para Windows"
+                              title={`Baixar RS KITS (${event.name})`}
                             >
                               <Download className="h-4 w-4" />
                             </a>
@@ -630,21 +715,26 @@ export function SettingsShell() {
                           {linuxDownload && (
                             <a
                               href={downloadHref(linuxDownload)}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                void prepareAndDownload(event, linuxDownload);
+                              }}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-600 hover:text-blue-600"
                               aria-label={`Baixar o aplicativo para Linux`}
-                              title="Baixar aplicativo para Linux"
+                              title={`Baixar RS KITS (${event.name})`}
                             >
                               <Download className="h-4 w-4" />
                             </a>
                           )}
                           <button
                             type="button"
-                            onClick={() => generatePackage(event)}
+                            onClick={() => void generatePackage(event)}
+                            aria-busy={generatingId === event.id}
                             className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:border-blue-600 hover:text-blue-600"
                             aria-label={`Gerar executável para ${event.name}`}
-                            title="Gerar executável (.rskits)"
+                            title={generatingId === event.id ? "Gerando executável..." : "Gerar executável (.rksits)"}
                           >
-                            <Package className="h-4 w-4" />
+                            {generatingId === event.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
                           </button>
                           <button
                             type="button"
@@ -675,48 +765,60 @@ export function SettingsShell() {
           {/* Fim coluna 2 */}
         </div>
       </main>
-      {packageModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setPackageModal(null)} aria-hidden="true" />
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-black">Executável do evento</h2>
-                <p className="text-sm text-slate-500">{packageModal.pkg.event.name}</p>
+        {packageModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setPackageModal(null)} aria-hidden="true" />
+            <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-black">Executável do evento</h2>
+                  <p className="text-sm text-slate-500">{packageModal.pkg.event.name}</p>
+                </div>
+                <button type="button" onClick={() => setPackageModal(null)} className="text-slate-400 hover:text-slate-600" aria-label="Fechar">
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <button type="button" onClick={() => setPackageModal(null)} className="text-slate-400 hover:text-slate-600" aria-label="Fechar">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
 
-            <ul className="mt-4 space-y-2 text-sm text-slate-600">
-              <li className="flex justify-between gap-2 border-b border-slate-100 pb-2">
-                <span>Atletas no pacote</span>
-                <span className="font-medium text-slate-900">{packageModal.pkg.athletes.length.toLocaleString("pt-BR")}</span>
-              </li>
-              <li className="flex justify-between gap-2 border-b border-slate-100 pb-2">
-                <span>Organizador</span>
-                <span className="font-medium text-slate-900">{packageModal.organizerName ?? "Não vinculado"}</span>
-              </li>
-              <li className="flex justify-between gap-2 border-b border-slate-100 pb-2">
-                <span>URL de sincronização</span>
-                <span className="break-all font-medium text-slate-900">{packageModal.pkg.config.cloudUrl}</span>
-              </li>
-            </ul>
-            <div className="mt-5 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setPackageModal(null)}>Fechar</Button>
-              {windowsDownload ? (
-                <a
-                  href={downloadHref(windowsDownload)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+              <ul className="mt-4 space-y-2 text-sm text-slate-600">
+                <li className="flex justify-between gap-2 border-b border-slate-100 pb-2">
+                  <span>Atletas no pacote</span>
+                  <span className="font-medium text-slate-900">{packageModal.pkg.athletes.length.toLocaleString("pt-BR")}</span>
+                </li>
+                <li className="flex justify-between gap-2 border-b border-slate-100 pb-2">
+                  <span>Organizador</span>
+                  <span className="font-medium text-slate-900">{packageModal.organizerName ?? "Não vinculado"}</span>
+                </li>
+                <li className="flex justify-between gap-2 border-b border-slate-100 pb-2">
+                  <span>URL de sincronização</span>
+                  <span className="break-all font-medium text-slate-900">{packageModal.pkg.config.cloudUrl}</span>
+                </li>
+              </ul>
+              <div className="mt-5 flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setPackageModal(null)}>Fechar</Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (packageModal) downloadPackage(packageModal.pkg);
+                  }}
                 >
-                  <Download className="h-4 w-4" /> Baixar para Windows
-                </a>
-              ) : (
-                <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-400">
-                  <Download className="h-4 w-4" /> Baixar para Windows
-                </span>
-              )}
+                  <Package className="mr-2 h-4 w-4" /> Baixar .rksits
+                </Button>
+                {windowsDownload ? (
+                  <a
+                    href={downloadHref(windowsDownload)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (packageModal) void prepareAndDownload(packageModal.pkg.event, windowsDownload);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                  >
+                    <Download className="h-4 w-4" /> Baixar para Windows
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-400">
+                    <Download className="h-4 w-4" /> Baixar para Windows
+                  </span>
+                )}
               <p className="truncate text-xs text-slate-400" title={windowsDownload?.file}>
                 {windowsDownload ? "Instalador Windows baixado." : "Nenhum instalador disponível."}
               </p>
@@ -725,6 +827,71 @@ export function SettingsShell() {
         </div>
       )}
       {toast && <Toast message={toast.message} error={toast.error} />}
+
+      {prep && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+            onClick={() => {
+              if (prep.status !== "preparing") setPrep(null);
+            }}
+            aria-hidden="true"
+          />
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black">
+                  {prep.status === "error"
+                    ? "Não foi possível preparar o RS KITS"
+                    : prep.status === "done"
+                      ? "Preparação concluída!"
+                      : "Preparando RS KITS"}
+                </h2>
+                <p className="text-sm text-slate-500">{prep.event.name}</p>
+              </div>
+              {prep.status !== "preparing" && (
+                <button
+                  type="button"
+                  onClick={() => setPrep(null)}
+                  className="text-slate-400 hover:text-slate-600"
+                  aria-label="Fechar"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              )}
+            </div>
+
+            {prep.status === "error" ? (
+              <div className="mt-5">
+                <p className="text-sm text-slate-600">{prep.error}</p>
+                <div className="mt-6 flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setPrep(null)}>Fechar</Button>
+                  <Button
+                    className="bg-blue-600 hover:bg-blue-700"
+                    onClick={() => void prepareAndDownload(prep.event, prepDownloadRef.current)}
+                  >
+                    Tentar novamente
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5">
+                <p className="text-sm text-slate-600">{prep.step}</p>
+                <p className="mt-3 text-3xl font-black text-slate-900">{prep.percent}%</p>
+                <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-blue-600 transition-all duration-300"
+                    style={{ width: `${prep.percent}%` }}
+                  />
+                </div>
+                {prep.status === "done" && (
+                  <p className="mt-3 text-sm text-slate-500">O download será iniciado...</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

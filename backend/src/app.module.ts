@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
 import { AuditModule } from './audit/audit.module';
 import { DownloadsModule } from './downloads/downloads.module';
+import { SyncModule } from './sync/sync.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { DownloadsModule } from './downloads/downloads.module';
     EventsModule,
     AuditModule,
     DownloadsModule,
+    SyncModule,
   ],
 })
 export class AppModule {}

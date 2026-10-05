@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -13,14 +14,29 @@ import {
   ImportAthletesDto,
   ListAthletesQueryDto,
   UpdateEventDto,
+  formatEventDate,
+  parseEventDate,
 } from './dtos/events.dto';
 import { AuditService, type AuditFieldChange } from '../audit/audit.service';
+import { recordChange } from '../sync/sync-history.service';
 
 // Janela de acesso: o evento fica acessível ao organizador/operador
 // até 5 dias após a data do evento.
 const ACCESS_WINDOW_DAYS = 5;
 
 type CurrentUser = { id: string; role: UserRole; organizerId?: string | null };
+
+/**
+ * Converte o registro do Prisma em JSON estável para o feed de sincronização:
+ * datas viram ISO-8601, o desktop nunca depende do formato local.
+ */
+export function serializeAthlete(athlete: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(athlete)) {
+    out[key] = value instanceof Date ? value.toISOString() : value;
+  }
+  return out as Prisma.InputJsonValue;
+}
 
 const ORGANIZER_SELECT = {
   id: true,
@@ -35,6 +51,7 @@ const EVENT_SELECT = {
   date: true,
   place: true,
   status: true,
+  version: true,
   createdAt: true,
   updatedAt: true,
   organizers: {
@@ -149,35 +166,106 @@ export class EventsService {
     return event;
   }
 
+  /**
+   * Cria o evento e seus vínculos de organizador em UMA transação.
+   * Sem organizador a criação é rejeitada: um evento sem vínculo ficaria
+   * invisível para quem deveria operá-lo.
+   */
   async create(dto: CreateEventDto, currentUser: CurrentUser) {
-    const date = new Date(dto.date);
-    const event = await this.prisma.event.create({
-      data: {
-        name: dto.name,
-        date,
-        place: dto.place ?? null,
-        status: dto.status ?? EventStatus.PROXIMO,
-      },
+    if (currentUser.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Apenas ADMIN pode criar eventos');
+    }
+
+    const organizerIds = [...new Set(dto.organizerIds ?? [])].filter(Boolean);
+    if (organizerIds.length === 0) {
+      throw new BadRequestException(
+        'Selecione o organizador responsável pelo evento',
+      );
+    }
+    await this.assertOrganizers(organizerIds);
+
+    const date = parseEventDate(dto.date);
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException('Data inválida');
+    }
+
+    const event = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.event.create({
+        data: {
+          name: dto.name.trim(),
+          date,
+          place: dto.place?.trim() || null,
+          status: dto.status ?? EventStatus.PROXIMO,
+          version: 1,
+        },
+      });
+      await tx.eventUser.createMany({
+        data: organizerIds.map((userId) => ({ eventId: created.id, userId })),
+      });
+      return created;
+    });
+
+    const full = await this.prisma.event.findUniqueOrThrow({
+      where: { id: event.id },
       select: EVENT_SELECT,
+    });
+
+    await recordChange(this.prisma, {
+      eventId: full.id,
+      entityType: 'EVENT',
+      entityId: full.id,
+      version: full.version,
+      payload: {
+        ...full,
+        date: formatEventDate(full.date),
+        dateTime: full.date.toISOString(),
+      } as unknown as Prisma.InputJsonValue,
+      userId: currentUser.id,
     });
 
     await this.audit.register({
       usuario: this.toAuditUser(currentUser),
       acao: 'CRIACAO_EVENTO',
       entidade: 'EVENTO',
-      entidadeId: event.id,
-      evento: event.name,
+      entidadeId: full.id,
+      evento: full.name,
       de: null,
       para: {
-        name: event.name,
-        date: event.date,
-        place: event.place,
-        status: event.status,
+        name: full.name,
+        date: formatEventDate(full.date),
+        place: full.place,
+        status: full.status,
+        organizers: full.organizers.map((link) => link.user.name),
       },
       origem: 'SISTEMA',
     });
 
-    return event;
+    return full;
+  }
+
+  /** Garante que todos os ids existem e são ORGANIZADOR. */
+  private async assertOrganizers(organizerIds: string[]) {
+    const organizers = await this.prisma.user.findMany({
+      where: { id: { in: organizerIds } },
+      select: { id: true, name: true, role: true },
+    });
+    const found = new Map(organizers.map((user) => [user.id, user]));
+
+    const missing = organizerIds.filter((id) => !found.has(id));
+    if (missing.length) {
+      throw new BadRequestException(
+        `Organizador não encontrado: ${missing.join(', ')}`,
+      );
+    }
+    const invalid = organizers.filter((user) => user.role !== UserRole.ORGANIZADOR);
+    if (invalid.length) {
+      throw new BadRequestException(
+        `Somente ORGANIZADOR pode ser vinculado (${invalid
+          .map((user) => user.name)
+          .join(', ')})`,
+      );
+    }
+    return organizers;
   }
 
   async findOne(eventId: string, currentUser: CurrentUser) {
@@ -189,46 +277,135 @@ export class EventsService {
     return event;
   }
 
+  /**
+   * Atualiza o evento e o conjunto de organizadores em UMA transação.
+   * `organizerIds` ausente mantém os vínculos atuais; enviado, substitui o
+   * conjunto e o diff fica registrado em auditoria (sem remoção silenciosa).
+   */
   async update(eventId: string, dto: UpdateEventDto, currentUser: CurrentUser) {
     if (currentUser.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Apenas ADMIN pode alterar eventos');
     }
 
-    const before = await this.prisma.event.findUniqueOrThrow({
+    const before = await this.prisma.event.findUnique({
       where: { id: eventId },
     });
+    if (!before) {
+      throw new NotFoundException('Evento não encontrado');
+    }
 
-    const updated = await this.prisma.event.update({
+    const replacesOrganizers = dto.organizerIds !== undefined;
+    let desiredOrganizers: string[] | null = null;
+    if (replacesOrganizers) {
+      desiredOrganizers = [...new Set(dto.organizerIds ?? [])].filter(Boolean);
+      await this.assertOrganizers(desiredOrganizers);
+    }
+
+    const nextDate = dto.date ? parseEventDate(dto.date) : undefined;
+    if (nextDate && Number.isNaN(nextDate.getTime())) {
+      throw new BadRequestException('Data inválida');
+    }
+
+    const previousLinks = await this.prisma.eventUser.findMany({
+      where: { eventId },
+      select: { userId: true },
+    });
+    const previousOrganizerIds = previousLinks.map((link) => link.userId);
+    const toAdd = desiredOrganizers
+      ? desiredOrganizers.filter((id) => !previousOrganizerIds.includes(id))
+      : [];
+    const toRemove = desiredOrganizers
+      ? previousOrganizerIds.filter((id) => !desiredOrganizers!.includes(id))
+      : [];
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const event = await tx.event.update({
+        where: { id: eventId },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+          ...(nextDate ? { date: nextDate } : {}),
+          ...(dto.place !== undefined ? { place: dto.place.trim() || null } : {}),
+          ...(dto.status !== undefined
+            ? { status: dto.status as EventStatus }
+            : {}),
+          version: { increment: 1 },
+        },
+      });
+
+      if (toAdd.length) {
+        await tx.eventUser.createMany({
+          data: toAdd.map((userId) => ({ eventId, userId })),
+        });
+      }
+      if (toRemove.length) {
+        await tx.eventUser.deleteMany({
+          where: { eventId, userId: { in: toRemove } },
+        });
+      }
+      return event;
+    });
+
+    const full = await this.prisma.event.findUniqueOrThrow({
       where: { id: eventId },
-      data: {
-        name: dto.name,
-        date: dto.date ? new Date(dto.date) : undefined,
-        place: dto.place,
-        status: dto.status,
-      },
       select: EVENT_SELECT,
     });
 
     const fields: AuditFieldChange[] = [];
-    for (const key of ['name', 'date', 'place', 'status'] as const) {
-      const beforeValue = (before as Record<string, unknown>)[key];
-      const afterValue = (updated as Record<string, unknown>)[key];
-      if (beforeValue !== afterValue) {
-        fields.push({ campo: key, de: beforeValue, para: afterValue });
-      }
+    if (dto.name !== undefined && before.name !== updated.name) {
+      fields.push({ campo: 'name', de: before.name, para: updated.name });
+    }
+    if (nextDate && before.date.getTime() !== updated.date.getTime()) {
+      fields.push({
+        campo: 'date',
+        de: formatEventDate(before.date),
+        para: formatEventDate(updated.date),
+      });
+    }
+    if (dto.place !== undefined && (before.place ?? '') !== (updated.place ?? '')) {
+      fields.push({ campo: 'place', de: before.place, para: updated.place });
+    }
+    if (dto.status !== undefined && before.status !== updated.status) {
+      fields.push({ campo: 'status', de: before.status, para: updated.status });
     }
     if (fields.length) {
       await this.audit.logFieldChanges(fields, {
         usuario: this.toAuditUser(currentUser),
         entidade: 'EVENTO',
         entidadeId: eventId,
-        evento: updated.name,
+        evento: full.name,
         acao: 'EDICAO_EVENTO',
         origem: 'SISTEMA',
       });
     }
 
-    return updated;
+    if (replacesOrganizers) {
+      await this.audit.register({
+        usuario: this.toAuditUser(currentUser),
+        acao: 'VINCULO_ORGANIZADOR',
+        entidade: 'EVENTO',
+        entidadeId: eventId,
+        evento: full.name,
+        detalhe:
+          `Vínculos atualizados — adicionados: [${toAdd.join(', ')}], ` +
+          `removidos: [${toRemove.join(', ')}]`,
+        origem: 'SISTEMA',
+      });
+    }
+
+    await recordChange(this.prisma, {
+      eventId,
+      entityType: 'EVENT',
+      entityId: eventId,
+      version: full.version,
+      payload: {
+        ...full,
+        date: formatEventDate(full.date),
+        dateTime: full.date.toISOString(),
+      } as unknown as Prisma.InputJsonValue,
+      userId: currentUser.id,
+    });
+
+    return full;
   }
 
   async remove(eventId: string, currentUser: CurrentUser) {
@@ -241,6 +418,17 @@ export class EventsService {
     });
     await this.prisma.event.delete({ where: { id: eventId } });
 
+    // Tombstone: o desktop precisa saber que o evento sumiu, mesmo having
+    // recebido a mudança depois de já ter sincronizado antes da exclusão.
+    await recordChange(this.prisma, {
+      eventId,
+      entityType: 'EVENT',
+      entityId: eventId,
+      version: (event as unknown as { version: number }).version ?? 1,
+      op: 'DELETE',
+      userId: currentUser.id,
+    });
+
     await this.audit.register({
       usuario: this.toAuditUser(currentUser),
       acao: 'EXCLUSAO_EVENTO',
@@ -249,7 +437,7 @@ export class EventsService {
       evento: event.name,
       de: {
         name: event.name,
-        date: event.date,
+        date: formatEventDate(event.date),
         place: event.place,
         status: event.status,
       },
@@ -561,10 +749,38 @@ export class EventsService {
     for (const key of allowedFields) {
       if (key in data) patch[key] = data[key];
     }
+    if (Object.keys(patch).length === 0) {
+      throw new BadRequestException('Nenhum campo válido para atualizar');
+    }
 
-    const updates = await this.prisma.athlete.update({
-      where: { id: athleteId },
-      data: patch,
+    // A versão enviada pelo cliente permite detectar edição concorrente.
+    const baseVersion =
+      typeof data.version === 'number' ? (data.version as number) : null;
+    if (baseVersion !== null && baseVersion !== athlete.version) {
+      throw new ConflictException(
+        `Registro alterado por outro usuário (v${athlete.version}). Recarregue antes de salvar.`,
+      );
+    }
+
+    const { version: _ignoredVersion, ...patchFields } = patch;
+
+    const updates = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.athlete.update({
+        where: { id: athleteId },
+        data: { ...patchFields, version: { increment: 1 } },
+      });
+      await tx.syncChange.create({
+        data: {
+          eventId,
+          entityType: 'ATHLETE',
+          entityId: updated.id,
+          version: updated.version,
+          op: 'UPSERT',
+          payload: serializeAthlete(updated),
+          userId: currentUser.id,
+        },
+      });
+      return updated;
     });
 
     // Auditoria: registra antes/depois por campo efetivamente alterado.

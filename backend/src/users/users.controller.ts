@@ -25,6 +25,11 @@ export class UsersController {
     return this.usersService.findAll(req.user);
   }
 
+  @Get('organizers')
+  listOrganizers(@Req() req: any) {
+    return this.usersService.listOrganizers(req.user);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @Req() req: any) {
     return this.usersService.findOne(id, req.user);

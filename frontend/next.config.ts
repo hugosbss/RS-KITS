@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { PHASE_DEVELOPMENT_SERVER } from 'next/constants';
 import withPWA from 'next-pwa';
 
 const nextConfig: NextConfig = {
@@ -28,4 +29,9 @@ const pwaConfig = withPWA({
   disable: process.env.NODE_ENV === 'development',
 });
 
-export default pwaConfig(nextConfig);
+export default (phase: string) =>
+  pwaConfig({
+    ...nextConfig,
+    // Turbopack em desenvolvimento não deve sobrescrever a build de produção.
+    distDir: phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next',
+  });

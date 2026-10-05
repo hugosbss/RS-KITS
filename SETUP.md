@@ -1,4 +1,4 @@
-# SportDelivery — Guia de Setup (Fase 1)
+# RS - KITS — Guia de Setup (Fase 1)
 
 ## Pré-requisitos
 
@@ -60,7 +60,9 @@ cd backend && npm run start:dev
 # Terminal 2
 cd frontend && npm run dev
 ```
-
+```bash
+cd desktop && build_windows.bat (requer antes o build estático do front com NEXT_DESKTOP=1). Linux: cd desktop && bash build_linux.sh.
+```
 ## URLs
 
 | Serviço   | URL                          |
@@ -73,13 +75,22 @@ cd frontend && npm run dev
 
 | Perfil    | E-mail                        | Senha        |
 |-----------|-------------------------------|--------------|
-| Admin     | admin@sportdelivery.com       | admin123     |
-| Operador  | operador@sportdelivery.com    | operador123  |
+| Admin     | admin@rskits.com              | admin123     |
+
+O seed cria apenas o administrador e preserva a senha de uma conta já existente.
+Após atualizar o código, aplique também as migrações pendentes do banco:
+
+```bash
+npm run prisma:deploy --prefix backend
+```
+
+Se o login retornar 500 com a mensagem `users.accessCode does not exist` no
+backend, o banco ainda não recebeu a migração do código de acesso.
 
 ## Estrutura do projeto
 
 ```text
-SportDelivery/
+RS-KITS/
 ├── backend/          # NestJS + Prisma + JWT + Swagger
 ├── frontend/         # Next.js 15 + Tailwind + PWA + shadcn/ui
 ├── docker-compose.yml
