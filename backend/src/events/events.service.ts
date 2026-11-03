@@ -5,6 +5,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  assertImportIdentities,
+  importNum,
+  importCpf,
+} from './import-validation';
 import { PrismaService } from '../prisma/prisma.service';
 import { Prisma, UserRole } from '@prisma/client';
 import { EventStatus } from './enums/event-status.enum';
@@ -257,7 +262,9 @@ export class EventsService {
         `Organizador não encontrado: ${missing.join(', ')}`,
       );
     }
-    const invalid = organizers.filter((user) => user.role !== UserRole.ORGANIZADOR);
+    const invalid = organizers.filter(
+      (user) => user.role !== UserRole.ORGANIZADOR,
+    );
     if (invalid.length) {
       throw new BadRequestException(
         `Somente ORGANIZADOR pode ser vinculado (${invalid
@@ -324,7 +331,9 @@ export class EventsService {
         data: {
           ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
           ...(nextDate ? { date: nextDate } : {}),
-          ...(dto.place !== undefined ? { place: dto.place.trim() || null } : {}),
+          ...(dto.place !== undefined
+            ? { place: dto.place.trim() || null }
+            : {}),
           ...(dto.status !== undefined
             ? { status: dto.status as EventStatus }
             : {}),
@@ -361,7 +370,10 @@ export class EventsService {
         para: formatEventDate(updated.date),
       });
     }
-    if (dto.place !== undefined && (before.place ?? '') !== (updated.place ?? '')) {
+    if (
+      dto.place !== undefined &&
+      (before.place ?? '') !== (updated.place ?? '')
+    ) {
       fields.push({ campo: 'place', de: before.place, para: updated.place });
     }
     if (dto.status !== undefined && before.status !== updated.status) {
@@ -516,7 +528,9 @@ export class EventsService {
     currentUser: CurrentUser,
   ) {
     if (currentUser.role !== UserRole.ADMIN) {
-      throw new ForbiddenException('Apenas ADMIN pode desvincular organizadores');
+      throw new ForbiddenException(
+        'Apenas ADMIN pode desvincular organizadores',
+      );
     }
 
     const event = await this.prisma.event.findUniqueOrThrow({
@@ -560,7 +574,12 @@ export class EventsService {
       ...(query.search
         ? {
             OR: [
-              { nomeAtleta: { contains: query.search, mode: 'insensitive' as const } },
+              {
+                nomeAtleta: {
+                  contains: query.search,
+                  mode: 'insensitive' as const,
+                },
+              },
               { cpfAtleta: { contains: query.search } },
               { num: { contains: query.search } },
             ],
@@ -592,97 +611,120 @@ export class EventsService {
       await this.findAccessibleEvent(eventId, currentUser);
     }
 
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
-      select: { id: true, name: true, date: true },
-    });
-    if (!event) {
-      throw new NotFoundException('Evento não encontrado');
-    }
-
-    const nums = dto.athletes
-      .map((a) => a.num)
-      .filter((num): num is string => !!num);
-
-    const existing = nums.length
-      ? await this.prisma.athlete.findMany({
-          where: { eventId, num: { in: nums } },
-        })
-      : [];
-
-    const existingByNum = new Map(
-      existing.map((athlete) => [athlete.num, athlete]),
-    );
-
-    const toCreate: Prisma.AthleteCreateManyInput[] = [];
-    const toUpdate: Array<{ id: string; data: Prisma.AthleteUpdateInput }> = [];
-    const changesByAthlete: Array<{
-      id: string;
-      num: string;
-      fields: AuditFieldChange[];
-    }> = [];
-
-    const buildData = (item: (typeof dto.athletes)[number]) => ({
-      nomeAtleta: item.nomeAtleta,
-      kit: item.kit ?? null,
-      distancia: item.distancia ?? null,
-      fxEtaria: item.fxEtaria ?? null,
-      categEspecial: item.categEspecial ?? null,
-      nascto: item.nascto ?? null,
-      nascimento: item.nascimento ? new Date(item.nascimento) : null,
-      sexo: item.sexo ?? null,
-      equipe: item.equipe ?? null,
-      cidadeUf: item.cidadeUf ?? null,
-      camiseta: item.camiseta ?? null,
-      cpfAtleta: item.cpfAtleta ?? null,
-      cel: item.cel ?? null,
-      email: item.email ?? null,
-      quemVaiRetirar: item.quemVaiRetirar ?? null,
-      notas: item.notas ?? null,
-      obs1: item.obs1 ?? null,
-      obs2: item.obs2 ?? null,
-      alerta: item.alerta ?? null,
-      nomeEvento: item.nomeEvento || event.name,
-      contato: item.contato ?? null,
-      grauParentesco: item.grauParentesco ?? null,
-      celularContato: item.celularContato ?? null,
-      pin: item.pin ?? null,
-      itensAdicionais: item.itensAdicionais ?? null,
-      convenioMedico: item.convenioMedico ?? null,
-      tipoSanguineo: item.tipoSanguineo ?? null,
-      contatoEmergencia: item.contatoEmergencia ?? null,
-      relacaoAtleta: item.relacaoAtleta ?? null,
-      telefoneEmergencia: item.telefoneEmergencia ?? null,
-    });
-
-    for (const item of dto.athletes) {
-      if (item.num && existingByNum.has(item.num)) {
-        const current = existingByNum.get(item.num)!;
-        const data = buildData(item);
-        const fields: AuditFieldChange[] = [];
-        for (const [key, value] of Object.entries(data)) {
-          const before = (current as Record<string, unknown>)[key];
-          if (before !== value) {
-            fields.push({ campo: key, de: before, para: value });
-          }
-        }
-        if (fields.length) {
-          changesByAthlete.push({
-            id: current.id,
-            num: item.num,
-            fields,
+    const { event, toCreate, toUpdate, changesByAthlete } =
+      await this.prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${eventId}))::text`;
+          const event = await tx.event.findUnique({
+            where: { id: eventId },
+            select: { id: true, name: true, date: true },
           });
-        }
-        toUpdate.push({ id: current.id, data });
-      } else {
-        toCreate.push({ eventId, num: item.num ?? null, ...buildData(item) });
-      }
-    }
+          if (!event) {
+            throw new NotFoundException('Evento não encontrado');
+          }
 
-    await this.prisma.$transaction([
-      ...toUpdate.map((u) => this.prisma.athlete.update({ where: { id: u.id }, data: u.data })),
-      ...(toCreate.length ? [this.prisma.athlete.createMany({ data: toCreate })] : []),
-    ]);
+          assertImportIdentities(dto.athletes);
+          const existing = await tx.athlete.findMany({ where: { eventId } });
+          assertImportIdentities(dto.athletes, existing);
+
+          const existingByNum = new Map(
+            existing
+              .filter((athlete) => athlete.num)
+              .map((athlete) => [importNum(athlete.num), athlete]),
+          );
+          const existingByCpf = new Map(
+            existing
+              .filter((athlete) => importCpf(athlete.cpfAtleta))
+              .map((athlete) => [importCpf(athlete.cpfAtleta), athlete]),
+          );
+
+          const toCreate: Prisma.AthleteCreateManyInput[] = [];
+          const toUpdate: Array<{
+            id: string;
+            data: Prisma.AthleteUpdateInput;
+          }> = [];
+          const changesByAthlete: Array<{
+            id: string;
+            num: string;
+            fields: AuditFieldChange[];
+          }> = [];
+
+          const buildData = (item: (typeof dto.athletes)[number]) => ({
+            nomeAtleta: item.nomeAtleta,
+            kit: item.kit ?? null,
+            distancia: item.distancia ?? null,
+            fxEtaria: item.fxEtaria ?? null,
+            categEspecial: item.categEspecial ?? null,
+            nascto: item.nascto ?? null,
+            nascimento: item.nascimento ? new Date(item.nascimento) : null,
+            sexo: item.sexo ?? null,
+            equipe: item.equipe ?? null,
+            cidadeUf: item.cidadeUf ?? null,
+            camiseta: item.camiseta ?? null,
+            cpfAtleta: item.cpfAtleta ?? null,
+            cel: item.cel ?? null,
+            email: item.email ?? null,
+            quemVaiRetirar: item.quemVaiRetirar ?? null,
+            notas: item.notas ?? null,
+            obs1: item.obs1 ?? null,
+            obs2: item.obs2 ?? null,
+            alerta: item.alerta ?? null,
+            nomeEvento: item.nomeEvento || event.name,
+            contato: item.contato ?? null,
+            grauParentesco: item.grauParentesco ?? null,
+            celularContato: item.celularContato ?? null,
+            pin: item.pin ?? null,
+            itensAdicionais: item.itensAdicionais ?? null,
+            convenioMedico: item.convenioMedico ?? null,
+            tipoSanguineo: item.tipoSanguineo ?? null,
+            contatoEmergencia: item.contatoEmergencia ?? null,
+            relacaoAtleta: item.relacaoAtleta ?? null,
+            telefoneEmergencia: item.telefoneEmergencia ?? null,
+          });
+
+          for (const item of dto.athletes) {
+            const match =
+              (item.num ? existingByNum.get(importNum(item.num)) : undefined) ??
+              (item.cpfAtleta
+                ? existingByCpf.get(importCpf(item.cpfAtleta))
+                : undefined);
+            if (match) {
+              const current = match;
+              const data = buildData(item);
+              const fields: AuditFieldChange[] = [];
+              for (const [key, value] of Object.entries(data)) {
+                const before = (current as Record<string, unknown>)[key];
+                if (before !== value) {
+                  fields.push({ campo: key, de: before, para: value });
+                }
+              }
+              if (fields.length) {
+                changesByAthlete.push({
+                  id: current.id,
+                  num: item.num ?? current.num ?? '',
+                  fields,
+                });
+              }
+              toUpdate.push({ id: current.id, data });
+            } else {
+              toCreate.push({
+                eventId,
+                num: item.num ?? null,
+                ...buildData(item),
+              });
+            }
+          }
+
+          for (const update of toUpdate)
+            await tx.athlete.update({
+              where: { id: update.id },
+              data: update.data,
+            });
+          if (toCreate.length) await tx.athlete.createMany({ data: toCreate });
+          return { event, toCreate, toUpdate, changesByAthlete };
+        },
+        { timeout: 60000 },
+      );
 
     // Auditoria: resumo da importação + antes/depois por atleta/campo atualizado.
     await this.audit.register({
@@ -734,15 +776,47 @@ export class EventsService {
     }
 
     const allowedFields = [
-      'num', 'nomeAtleta', 'kit', 'distancia', 'fxEtaria', 'categEspecial',
-      'nascto', 'sexo', 'equipe', 'cidadeUf', 'camiseta', 'cpfAtleta', 'cel',
-      'email', 'quemVaiRetirar', 'notas', 'obs1', 'obs2', 'alerta', 'nomeEvento',
-      'contato', 'grauParentesco', 'celularContato', 'pin', 'itensAdicionais',
-      'convenioMedico', 'tipoSanguineo', 'contatoEmergencia', 'relacaoAtleta',
+      'num',
+      'nomeAtleta',
+      'kit',
+      'distancia',
+      'fxEtaria',
+      'categEspecial',
+      'nascto',
+      'sexo',
+      'equipe',
+      'cidadeUf',
+      'camiseta',
+      'cpfAtleta',
+      'cel',
+      'email',
+      'quemVaiRetirar',
+      'notas',
+      'obs1',
+      'obs2',
+      'alerta',
+      'nomeEvento',
+      'contato',
+      'grauParentesco',
+      'celularContato',
+      'pin',
+      'itensAdicionais',
+      'convenioMedico',
+      'tipoSanguineo',
+      'contatoEmergencia',
+      'relacaoAtleta',
       'telefoneEmergencia',
-      'statusEntrega', 'dataEntrega', 'usuarioEntrega', 'obsEntrega',
-      'dataEstorno', 'usuarioEstorno', 'nomeEntrega', 'cpfEntrega',
-      'foneEntrega', 'emailEntrega', 'terceiro',
+      'statusEntrega',
+      'dataEntrega',
+      'usuarioEntrega',
+      'obsEntrega',
+      'dataEstorno',
+      'usuarioEstorno',
+      'nomeEntrega',
+      'cpfEntrega',
+      'foneEntrega',
+      'emailEntrega',
+      'terceiro',
     ];
 
     const patch: Record<string, unknown> = {};

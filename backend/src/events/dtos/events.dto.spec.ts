@@ -68,14 +68,17 @@ describe('CreateEventDto', () => {
 
   it('rejeita organizador duplicado na seleção', () => {
     expect(
-      validate(CreateEventDto, { ...base, organizerIds: ['org-1', 'org-1'] }).join(
-        ' ',
-      ),
+      validate(CreateEventDto, {
+        ...base,
+        organizerIds: ['org-1', 'org-1'],
+      }).join(' '),
     ).toContain('Organizador duplicado na seleção');
   });
 
   it('rejeita campo desconhecido em vez de ignorá-lo em silêncio', () => {
-    expect(validate(CreateEventDto, { ...base, hack: true }).length).toBeGreaterThan(0);
+    expect(
+      validate(CreateEventDto, { ...base, hack: true }).length,
+    ).toBeGreaterThan(0);
   });
 
   it('aceita vários organizadores distintos', () => {
@@ -101,6 +104,8 @@ describe('UpdateEventDto', () => {
   });
 
   it('rejeita data inválida', () => {
-    expect(validate(UpdateEventDto, { date: '15/03/2026' }).length).toBeGreaterThan(0);
+    expect(
+      validate(UpdateEventDto, { date: '15/03/2026' }).length,
+    ).toBeGreaterThan(0);
   });
 });
