@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { fetchAthletes } from "@/services/api";
-import { mapBackendAthletes } from "@/components/providers/app-context";
-import { buildZip, downloadBlob, sanitizePart } from "@/services/distribution";
-import type { ImportedRow } from "@/components/import/types";
-import type { AppEvent, AppUser } from "@/components/providers/app-context";
+import { fetchAthletes } from '@/services/api';
+import { mapBackendAthletes } from '@/components/providers/app-context';
+import { buildZip, downloadBlob, sanitizePart } from '@/services/distribution';
+import type { ImportedRow } from '@/components/import/types';
+import type { AppEvent, AppUser } from '@/components/providers/app-context';
 
 export type RSKITSPackage = {
-  format: "RSKITS_PACKAGE";
+  format: 'RSKITS_PACKAGE';
   version: 1;
   createdBy: string;
   createdAt: string;
@@ -16,7 +16,7 @@ export type RSKITSPackage = {
     name: string;
     date: string;
     place: string;
-    status: AppEvent["status"];
+    status: AppEvent['status'];
   };
   organizer: {
     id: string;
@@ -40,15 +40,15 @@ export function buildEventPackage(params: {
   cloudUrl?: string;
 }): RSKITSPackage {
   return {
-    format: "RSKITS_PACKAGE",
+    format: 'RSKITS_PACKAGE',
     version: 1,
     createdBy: params.createdBy,
     createdAt: new Date().toISOString(),
     event: {
       id: params.event.id,
       name: params.event.name,
-      date: params.event.date ?? "",
-      place: params.event.place ?? "",
+      date: params.event.date ?? '',
+      place: params.event.place ?? '',
       status: params.event.status,
     },
     organizer: params.organizer
@@ -61,8 +61,8 @@ export function buildEventPackage(params: {
         }
       : null,
     config: {
-      cloudUrl: params.cloudUrl ?? "http://127.0.0.1:19100",
-      eventOwner: params.event.organizer ?? "",
+      cloudUrl: params.cloudUrl ?? 'http://127.0.0.1:19100',
+      eventOwner: params.event.organizer ?? '',
     },
     athletes: params.athletes,
   };
@@ -88,10 +88,15 @@ function packageBaseName(pkg: RSKITSPackage): string {
   return `RS-KITS-${sanitizePart(pkg.event.name).toLowerCase()}`;
 }
 
-export function distributionFileName(pkg: RSKITSPackage, installerName: string | null): string {
+export function distributionFileName(
+  pkg: RSKITSPackage,
+  installerName: string | null,
+): string {
   // Com instalador: um único arquivo ZIP (instalador + .rksits do evento).
   // Sem instalador disponível: apenas o pacote de dados .rksits.
-  return installerName ? `${packageBaseName(pkg)}.zip` : `${packageBaseName(pkg)}.rksits`;
+  return installerName
+    ? `${packageBaseName(pkg)}.zip`
+    : `${packageBaseName(pkg)}.rksits`;
 }
 
 // Empacota instalador + dados do evento num único arquivo de distribuição.
@@ -104,11 +109,11 @@ export async function buildDistributionBlob(
   const pkgBytes = new TextEncoder().encode(JSON.stringify(pkg, null, 2));
   if (!installer) {
     // Sem instalador (desktop sem artefato publicado): só o .rksits mesmo.
-    return new Blob([pkgBytes], { type: "application/json" });
+    return new Blob([pkgBytes], { type: 'application/json' });
   }
   const response = await fetch(installer.url);
   if (!response.ok) {
-    throw new Error("Não foi possível carregar o instalador do aplicativo.");
+    throw new Error('Não foi possível carregar o instalador do aplicativo.');
   }
   const exeBytes = new Uint8Array(await response.arrayBuffer());
   return buildZip([
@@ -118,6 +123,8 @@ export async function buildDistributionBlob(
 }
 
 export function downloadPackage(pkg: RSKITSPackage): void {
-  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], {
+    type: 'application/json',
+  });
   downloadBlob(blob, `${packageBaseName(pkg)}.rksits`);
 }

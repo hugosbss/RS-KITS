@@ -27,9 +27,13 @@ export function crc32(bytes: Uint8Array): number {
 
 function dosDateTime(date: Date): { time: number; date: number } {
   const time =
-    (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+    (date.getHours() << 11) |
+    (date.getMinutes() << 5) |
+    Math.floor(date.getSeconds() / 2);
   const datePart =
-    ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+    ((date.getFullYear() - 1980) << 9) |
+    ((date.getMonth() + 1) << 5) |
+    date.getDate();
   return { time, date: datePart };
 }
 
@@ -100,13 +104,13 @@ export function buildZip(entries: ZipEntry[], date: Date = new Date()): Blob {
   eocd.setUint32(16, offset, true);
   eocd.setUint16(20, 0, true);
 
-  return new Blob([...chunks, ...central, eocd], { type: "application/zip" });
+  return new Blob([...chunks, ...central, eocd], { type: 'application/zip' });
 }
 
 // Dispara o download de um Blob (arquivo único para o usuário).
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
+  const link = document.createElement('a');
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);
@@ -116,5 +120,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export function sanitizePart(value: string): string {
-  return value.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "evento";
+  return (
+    value.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'evento'
+  );
 }
