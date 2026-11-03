@@ -1,5 +1,6 @@
-import { RequireAuth } from "@/components/providers/require-auth";
-import { Dashboard } from "@/components/dashboard/dashboard";
+import type { Metadata } from 'next';
+import { RequireAuth } from '@/components/providers/require-auth';
+import { Dashboard } from '@/components/dashboard/dashboard';
 
 export default function DashboardPage() {
   return (
@@ -8,3 +9,4 @@ export default function DashboardPage() {
     </RequireAuth>
   );
 }
+export const metadata: Metadata = { title: 'Dashboard' };
