@@ -1,8 +1,21 @@
-"use client";
+'use client';
+import { splitExistingAthletes } from '@/services/import-validation';
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import type { ImportedRow } from "@/components/import/import";
-import { formatDateBR } from "@/lib/utils";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import {
+  SESSION_EXPIRED_EVENT,
+  tokenExpiresAt,
+  tokenIsExpired,
+} from '@/services/session';
+import type { ImportedRow } from '@/components/import/import';
+import { formatDateBR } from '@/lib/utils';
 import {
   login as apiLogin,
   registerUser as apiRegisterUser,
@@ -20,9 +33,9 @@ import {
   type BackendUser,
   type BackendEvent,
   type BackendAthlete,
-} from "@/services/api";
+} from '@/services/api';
 
-export type UserRole = "ADMIN" | "ORGANIZADOR" | "OPERADOR";
+export type UserRole = 'ADMIN' | 'ORGANIZADOR' | 'OPERADOR';
 
 export type AppUser = {
   id: string;
@@ -43,28 +56,32 @@ export type AppEvent = {
   date: string;
   place: string;
   organizer?: string;
-  status: "EM_ANDAMENTO" | "PROXIMO" | "FINALIZADO" | "RASCUNHO";
+  status: 'EM_ANDAMENTO' | 'PROXIMO' | 'FINALIZADO' | 'RASCUNHO';
 };
 
 type AppContextValue = {
   currentUser: AppUser;
   setCurrentUserId: (id: string) => void;
   users: AppUser[];
-  createUser: (user: Omit<AppUser, "id">) => Promise<void>;
+  createUser: (user: Omit<AppUser, 'id'>) => Promise<AppUser>;
   updateUser: (id: string, changes: Partial<AppUser>) => Promise<void>;
   deleteUser: (id: string) => Promise<void>;
   events: AppEvent[];
-  createEvent: (event: Omit<AppEvent, "id" | "status">) => Promise<AppEvent>;
-  updateEvent: (id: string, changes: Partial<AppEvent>) => void;
-  deleteEvent: (id: string) => void;
+  createEvent: (event: Omit<AppEvent, 'id' | 'status'>) => Promise<AppEvent>;
+  updateEvent: (id: string, changes: Partial<AppEvent>) => Promise<void>;
+  deleteEvent: (id: string) => Promise<void>;
   selectedEventId: string | null;
   selectedEvent: AppEvent | null;
   selectEvent: (id: string) => void;
   athletesByEvent: Record<string, ImportedRow[]>;
   importAthletes: (rows: ImportedRow[]) => Promise<void>;
-  updateAthlete: (athleteId: string, changes: Record<string, unknown>) => Promise<void>;
+  updateAthlete: (
+    athleteId: string,
+    changes: Record<string, unknown>,
+  ) => Promise<void>;
   token: string | null;
   isAuthenticated: boolean;
+  sessionExpired: boolean;
   hydrated: boolean;
   authUser: BackendUser | null;
   login: (identifier: string, password: string) => Promise<BackendUser>;
@@ -76,11 +93,11 @@ const INITIAL_USERS: AppUser[] = [];
 const INITIAL_EVENTS: AppEvent[] = [];
 
 const AppContext = createContext<AppContextValue | null>(null);
-const storageKey = "rs-kits-frontend-state";
-const authStorageKey = "rs-kits-auth";
+const storageKey = 'rs-kits-frontend-state';
+const authStorageKey = 'rs-kits-auth';
 
-const toAppUserRole = (role: BackendUser["role"]): UserRole =>
-  role === "OPERATOR" ? "OPERADOR" : role;
+const toAppUserRole = (role: BackendUser['role']): UserRole =>
+  role === 'OPERATOR' ? 'OPERADOR' : role;
 
 const toAppUser = (user: BackendUser): AppUser => ({
   id: user.id,
@@ -97,43 +114,43 @@ const mapBackendEvent = (event: BackendEvent): AppEvent => ({
   id: event.id,
   name: event.name,
   date: formatDateBR(event.date),
-  place: event.place ?? "Local a definir",
-  organizer: event.organizers?.[0]?.name ?? "",
-  status: (event.status as AppEvent["status"]) ?? "RASCUNHO",
+  place: event.place ?? 'Local a definir',
+  organizer: event.organizers?.[0]?.name ?? '',
+  status: (event.status as AppEvent['status']) ?? 'RASCUNHO',
 });
 
 const toDeliveryStatus = (
   value: string | null | undefined,
-): ImportedRow["statusEntrega"] =>
-  value === "ENTREGUE" || value === "ESTORNADO" ? value : "PENDENTE";
+): ImportedRow['statusEntrega'] =>
+  value === 'ENTREGUE' || value === 'ESTORNADO' ? value : 'PENDENTE';
 
 const mapBackendAthlete = (a: BackendAthlete): ImportedRow => ({
   id: a.id,
-  num: a.num ?? "",
+  num: a.num ?? '',
   nomeAtleta: a.nomeAtleta,
-  kit: a.kit ?? "",
-  modalidade: a.distancia ?? "",
-  fxEtaria: a.fxEtaria ?? "",
-  categEspecial: a.categEspecial ?? "",
+  kit: a.kit ?? '',
+  modalidade: a.distancia ?? '',
+  fxEtaria: a.fxEtaria ?? '',
+  categEspecial: a.categEspecial ?? '',
   nascto: formatDateBR(a.nascimento ?? a.nascto),
-  sexo: a.sexo ?? "",
-  equipe: a.equipe ?? "",
-  cidadeUf: a.cidadeUf ?? "",
-  camiseta: a.camiseta ?? "",
-  cpfAtleta: a.cpfAtleta ?? "",
-  cel: a.cel ?? "",
-  email: a.email ?? "",
-  quemVaiRetirar: a.quemVaiRetirar ?? "",
-  notas: a.notas ?? "",
-  obs1: a.obs1 ?? "",
-  obs2: a.obs2 ?? "",
-  alerta: a.alerta ?? "",
-  nomeEvento: a.nomeEvento ?? "",
-  contato: a.contato ?? "",
-  grauParentesco: a.grauParentesco ?? "",
-  celularContato: a.celularContato ?? "",
-  pin: a.pin ?? "",
-  itensAdicionais: a.itensAdicionais ?? "",
+  sexo: a.sexo ?? '',
+  equipe: a.equipe ?? '',
+  cidadeUf: a.cidadeUf ?? '',
+  camiseta: a.camiseta ?? '',
+  cpfAtleta: a.cpfAtleta ?? '',
+  cel: a.cel ?? '',
+  email: a.email ?? '',
+  quemVaiRetirar: a.quemVaiRetirar ?? '',
+  notas: a.notas ?? '',
+  obs1: a.obs1 ?? '',
+  obs2: a.obs2 ?? '',
+  alerta: a.alerta ?? '',
+  nomeEvento: a.nomeEvento ?? '',
+  contato: a.contato ?? '',
+  grauParentesco: a.grauParentesco ?? '',
+  celularContato: a.celularContato ?? '',
+  pin: a.pin ?? '',
+  itensAdicionais: a.itensAdicionais ?? '',
   statusEntrega: toDeliveryStatus(a.statusEntrega),
   dataEntrega: a.dataEntrega ?? undefined,
   usuarioEntrega: a.usuarioEntrega ?? undefined,
@@ -145,14 +162,14 @@ const mapBackendAthlete = (a: BackendAthlete): ImportedRow => ({
   foneEntrega: a.foneEntrega ?? undefined,
   emailEntrega: a.emailEntrega ?? undefined,
   terceiro: a.terceiro ?? false,
-  statusValidacao: "VALIDO",
+  statusValidacao: 'VALIDO',
 });
 
 export const mapBackendAthletes = (athletes: BackendAthlete[]): ImportedRow[] =>
   athletes.map(mapBackendAthlete);
 
 const BACKEND_FIELD_MAP: Record<string, string> = {
-  modalidade: "distancia",
+  modalidade: 'distancia',
 };
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
@@ -161,8 +178,57 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [events, setEvents] = useState(INITIAL_EVENTS);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [athletesByEvent, setAthletesByEvent] = useState<Record<string, ImportedRow[]>>({});
-  const [auth, setAuth] = useState<{ token: string; user: BackendUser } | null>(null);
+  const [athletesByEvent, setAthletesByEvent] = useState<
+    Record<string, ImportedRow[]>
+  >({});
+  const [auth, setAuth] = useState<{ token: string; user: BackendUser } | null>(
+    null,
+  );
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const authTokenRef = useRef<string | null>(null);
+  authTokenRef.current = auth?.token ?? null;
+
+  useEffect(() => {
+    const expire = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== authTokenRef.current)
+        return;
+      authTokenRef.current = null;
+      localStorage.removeItem(authStorageKey);
+      setAuth(null);
+      setCurrentUserId(null);
+      setUsers([]);
+      setSessionExpired(true);
+    };
+    window.addEventListener(SESSION_EXPIRED_EVENT, expire);
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, expire);
+  }, []);
+
+  useEffect(() => {
+    if (!auth) return;
+    const token = auth.token;
+    const check = () => {
+      if (tokenIsExpired(token)) {
+        window.dispatchEvent(
+          new CustomEvent(SESSION_EXPIRED_EVENT, { detail: token }),
+        );
+      }
+    };
+    const expiresAt = tokenExpiresAt(token);
+    const timer =
+      expiresAt === null
+        ? undefined
+        : setTimeout(
+            check,
+            Math.min(Math.max(0, expiresAt - Date.now()), 2147483647),
+          );
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [auth]);
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
@@ -172,21 +238,35 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         if (state.events) setEvents(state.events);
         if (state.selectedEventId) setSelectedEventId(state.selectedEventId);
         if (state.athletesByEvent) setAthletesByEvent(state.athletesByEvent);
-      } catch { /* Mantém a demonstração inicial se o armazenamento estiver inválido. */ }
+      } catch {
+        /* Mantém a demonstração inicial se o armazenamento estiver inválido. */
+      }
     }
     const savedAuth = localStorage.getItem(authStorageKey);
     if (savedAuth) {
       try {
         const parsed = JSON.parse(savedAuth);
-        if (parsed && parsed.token && parsed.user) setAuth(parsed);
-      } catch { /* ignorar auth inválida */ }
+        if (
+          typeof parsed?.token === 'string' &&
+          parsed.token &&
+          parsed.user?.id
+        ) {
+          if (tokenIsExpired(parsed.token)) setSessionExpired(true);
+          else setAuth(parsed);
+        } else setSessionExpired(true);
+      } catch {
+        setSessionExpired(true);
+      }
     }
     setHydrated(true);
   }, []);
 
   useEffect(() => {
     if (!hydrated) return;
-    localStorage.setItem(storageKey, JSON.stringify({ events, selectedEventId, athletesByEvent }));
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({ events, selectedEventId, athletesByEvent }),
+    );
     if (auth) localStorage.setItem(authStorageKey, JSON.stringify(auth));
     else localStorage.removeItem(authStorageKey);
   }, [hydrated, events, selectedEventId, athletesByEvent, auth]);
@@ -194,11 +274,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // Carrega os usuários do backend quando autenticado (inclusive após refresh).
   useEffect(() => {
     if (!hydrated || !auth) return;
+    let active = true;
     apiFetchUsers(auth.token)
-      .then((list) => setUsers(list.map(toAppUser)))
+      .then((list) => {
+        if (active && authTokenRef.current === auth.token)
+          setUsers(list.map(toAppUser));
+      })
       .catch(() => {
         // mantém usuários atuais se o backend estiver indisponível
       });
+    return () => {
+      active = false;
+    };
   }, [hydrated, auth]);
 
   // Carrega a lista de eventos do backend quando autenticado.
@@ -208,16 +295,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // para nunca abrir silenciosamente um evento desatualizado do SQLite.
   useEffect(() => {
     if (!hydrated || !auth) return;
+    let active = true;
     apiFetchEvents(auth.token)
       .then((list) => {
+        if (!active || authTokenRef.current !== auth.token) return;
         const mapped = list.map(mapBackendEvent);
         setEvents(mapped);
-        const preserveSelection = () =>
+        const preserveSelection = () => {
+          if (!active || authTokenRef.current !== auth.token) return;
           setSelectedEventId((current) =>
-            mapped.some((event) => event.id === current) ? current : (mapped[0]?.id ?? null),
+            mapped.some((event) => event.id === current)
+              ? current
+              : (mapped[0]?.id ?? null),
           );
+        };
         apiFetchActiveEventId(auth.token)
           .then((activeId) => {
+            if (!active || authTokenRef.current !== auth.token) return;
             if (activeId && mapped.some((event) => event.id === activeId)) {
               setSelectedEventId(activeId);
             } else {
@@ -229,13 +323,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {
         // mantém eventos locais se o backend estiver indisponível
       });
+    return () => {
+      active = false;
+    };
   }, [hydrated, auth]);
 
   // Carrega os atletas do evento selecionado quando autenticado.
   useEffect(() => {
     if (!hydrated || !auth || !selectedEventId) return;
+    let active = true;
     apiFetchAthletes(auth.token, selectedEventId, { limit: 200000 })
       .then((result) => {
+        if (!active || authTokenRef.current !== auth.token) return;
         setAthletesByEvent((current) => ({
           ...current,
           [selectedEventId]: mapBackendAthletes(result.athletes),
@@ -244,6 +343,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       .catch(() => {
         // falha silenciosa: mantém o cache local
       });
+    return () => {
+      active = false;
+    };
   }, [hydrated, auth, selectedEventId]);
 
   const { login, logout } = useMemo(
@@ -251,16 +353,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       login: async (identifier: string, password: string) => {
         const result = await apiLogin(identifier, password);
         const nextAuth = { token: result.access_token, user: result.user };
+        localStorage.setItem(authStorageKey, JSON.stringify(nextAuth));
+        authTokenRef.current = nextAuth.token;
+        setSessionExpired(false);
         setAuth(nextAuth);
         setCurrentUserId(result.user.id);
         try {
-          setUsers((await apiFetchUsers(result.access_token)).map(toAppUser));
+          const list = await apiFetchUsers(result.access_token);
+          if (authTokenRef.current === result.access_token)
+            setUsers(list.map(toAppUser));
         } catch {
           // mantém usuários atuais se a listagem falhar
         }
+        if (authTokenRef.current !== result.access_token)
+          throw new Error('Sua sessão expirou. Entre novamente.');
         return result.user;
       },
       logout: () => {
+        authTokenRef.current = null;
+        localStorage.removeItem(authStorageKey);
+        setSessionExpired(false);
         setAuth(null);
         setCurrentUserId(null);
       },
@@ -270,10 +382,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AppContextValue>(() => {
     const authUser = auth?.user ?? null;
-    const currentUser = authUser ? toAppUser(authUser) : (users.find((user) => user.id === currentUserId) ?? users[0]);
+    const currentUser = authUser
+      ? toAppUser(authUser)
+      : (users.find((user) => user.id === currentUserId) ?? users[0]);
     return {
       currentUser,
       isAuthenticated: !!auth,
+      sessionExpired,
       hydrated,
       authUser,
       token: auth?.token ?? null,
@@ -283,8 +398,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       users,
       createUser: async (user) => {
         if (!auth) {
-          setUsers((current) => [...current, { ...user, id: crypto.randomUUID() }]);
-          return;
+          const created = { ...user, id: crypto.randomUUID() };
+          setUsers((current) => [...current, created]);
+          return created;
         }
         const created = await apiRegisterUser(
           {
@@ -292,18 +408,24 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             email: user.email,
             cpf: user.cpf,
             cnpj: user.cnpj,
-            password: user.password ?? "",
-            role: user.role === "OPERADOR" ? "OPERATOR" : user.role,
+            password: user.password ?? '',
+            role: user.role === 'OPERADOR' ? 'OPERATOR' : user.role,
             phone: user.phone,
+            ...(user.organizerId ? { organizerId: user.organizerId } : {}),
             ...(user.accessCode ? { accessCode: user.accessCode } : {}),
           },
           auth.token,
         );
         setUsers((current) => [...current, toAppUser(created)]);
+        return toAppUser(created);
       },
       updateUser: async (id, changes) => {
         if (!auth) {
-          setUsers((current) => current.map((user) => (user.id === id ? { ...user, ...changes } : user)));
+          setUsers((current) =>
+            current.map((user) =>
+              user.id === id ? { ...user, ...changes } : user,
+            ),
+          );
           return;
         }
         const updated = await apiUpdateUser(
@@ -314,20 +436,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             cnpj: changes.cnpj,
             email: changes.email,
             phone: changes.phone,
+            ...(changes.organizerId !== undefined
+              ? { organizerId: changes.organizerId }
+              : {}),
             ...(changes.password ? { password: changes.password } : {}),
           },
           auth.token,
         );
-        setUsers((current) => current.map((user) => (user.id === id ? toAppUser(updated) : user)));
+        setUsers((current) =>
+          current.map((user) => (user.id === id ? toAppUser(updated) : user)),
+        );
       },
       deleteUser: async (id) => {
         if (auth) {
-          try {
-            await apiDeleteUser(id, auth.token);
-          } catch {
-            // mantém o usuário se a remoção no backend falhar
-            return;
-          }
+          await apiDeleteUser(id, auth.token);
         }
         setUsers((current) => current.filter((user) => user.id !== id));
       },
@@ -336,28 +458,33 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         const newEvent: AppEvent = {
           ...event,
           id: crypto.randomUUID(),
-          date: event.date || "Data a definir",
-          place: event.place || "Local a definir",
-          organizer: event.organizer ?? "",
-          status: "RASCUNHO",
+          date: event.date || 'Data a definir',
+          place: event.place || 'Local a definir',
+          organizer: event.organizer ?? '',
+          status: 'RASCUNHO',
         };
 
         if (auth) {
           let backendDate: string | undefined;
           if (event.date) {
             const raw = event.date;
-            const parsed = new Date(raw.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T12:00:00` : raw);
-            if (!Number.isNaN(parsed.getTime())) backendDate = parsed.toISOString();
+            const parsed = new Date(
+              raw.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(raw)
+                ? `${raw}T12:00:00`
+                : raw,
+            );
+            if (!Number.isNaN(parsed.getTime()))
+              backendDate = parsed.toISOString();
           }
           const created = await apiCreateEvent(auth.token, {
             name: newEvent.name,
             ...(backendDate ? { date: backendDate } : {}),
             ...(event.place ? { place: event.place } : {}),
-            status: "PROXIMO",
+            status: 'PROXIMO',
           });
           newEvent.id = created.id;
           newEvent.date = formatDateBR(created.date);
-          newEvent.place = created.place ?? "Local a definir";
+          newEvent.place = created.place ?? 'Local a definir';
           newEvent.status = created.status;
         }
 
@@ -365,36 +492,45 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         setSelectedEventId(newEvent.id);
         return newEvent;
       },
-      updateEvent: (id, changes) => {
-        setEvents((current) => current.map((event) => (event.id === id ? { ...event, ...changes } : event)));
+      updateEvent: async (id, changes) => {
         if (auth) {
           let backendDate: string | undefined;
           if (changes.date) {
-            const parts = changes.date.split("/");
-            const parsed = parts.length === 3
-              ? new Date(Date.UTC(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0])))
-              : new Date(changes.date);
-            if (!Number.isNaN(parsed.getTime())) backendDate = parsed.toISOString();
+            const parts = changes.date.split('/');
+            const parsed =
+              parts.length === 3
+                ? new Date(
+                    Date.UTC(
+                      Number(parts[2]),
+                      Number(parts[1]) - 1,
+                      Number(parts[0]),
+                    ),
+                  )
+                : new Date(changes.date);
+            if (!Number.isNaN(parsed.getTime()))
+              backendDate = parsed.toISOString();
           }
-          apiUpdateEvent(auth.token, id, {
+          await apiUpdateEvent(auth.token, id, {
             ...(changes.name ? { name: changes.name } : {}),
             ...(backendDate ? { date: backendDate } : {}),
             ...(changes.place ? { place: changes.place } : {}),
-          }).catch(() => {
-            // mantém o estado local se a atualização falhar
           });
         }
+        setEvents((current) =>
+          current.map((event) =>
+            event.id === id ? { ...event, ...changes } : event,
+          ),
+        );
       },
-      deleteEvent: (id) => {
-        setEvents((current) => current.filter((event) => event.id !== id));
+      deleteEvent: async (id) => {
         if (auth) {
-          apiDeleteEvent(auth.token, id).catch(() => {
-            // mantém o estado local se a remoção falhar
-          });
+          await apiDeleteEvent(auth.token, id);
         }
+        setEvents((current) => current.filter((event) => event.id !== id));
       },
       selectedEventId,
-      selectedEvent: events.find((event) => event.id === selectedEventId) ?? null,
+      selectedEvent:
+        events.find((event) => event.id === selectedEventId) ?? null,
       selectEvent: setSelectedEventId,
       athletesByEvent,
       importAthletes: async (rows) => {
@@ -403,9 +539,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         if (auth) {
           const payload = rows.map((row) => {
             let nascimento: string | undefined;
-            const parts = row.nascto?.split("/");
+            const parts = row.nascto?.split('/');
             if (parts && parts.length === 3) {
-              const dt = new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+              const dt = new Date(
+                Number(parts[2]),
+                Number(parts[1]) - 1,
+                Number(parts[0]),
+              );
               if (!Number.isNaN(dt.getTime())) nascimento = dt.toISOString();
             }
             return {
@@ -431,14 +571,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
               alerta: row.alerta,
               nomeEvento: row.nomeEvento,
               ...(row.contato ? { contato: row.contato } : {}),
-              ...(row.grauParentesco ? { grauParentesco: row.grauParentesco } : {}),
-              ...(row.celularContato ? { celularContato: row.celularContato } : {}),
+              ...(row.grauParentesco
+                ? { grauParentesco: row.grauParentesco }
+                : {}),
+              ...(row.celularContato
+                ? { celularContato: row.celularContato }
+                : {}),
               ...(row.pin ? { pin: row.pin } : {}),
-              ...(row.itensAdicionais ? { itensAdicionais: row.itensAdicionais } : {}),
+              ...(row.itensAdicionais
+                ? { itensAdicionais: row.itensAdicionais }
+                : {}),
             };
           });
           await apiImportAthletes(auth.token, selectedEventId, payload);
-          const result = await apiFetchAthletes(auth.token, selectedEventId, { limit: 200000 });
+          const result = await apiFetchAthletes(auth.token, selectedEventId, {
+            limit: 200000,
+          });
           setAthletesByEvent((current) => ({
             ...current,
             [selectedEventId]: mapBackendAthletes(result.athletes),
@@ -446,7 +594,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        setAthletesByEvent((current) => ({ ...current, [selectedEventId]: rows }));
+        setAthletesByEvent((current) => {
+          const existing = current[selectedEventId] ?? [];
+          return {
+            ...current,
+            [selectedEventId]: [
+              ...existing,
+              ...splitExistingAthletes(rows, existing).newRows,
+            ],
+          };
+        });
       },
       updateAthlete: async (athleteId, changes) => {
         if (!selectedEventId) return;
@@ -456,18 +613,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             if (row.id !== athleteId) return row;
             const merged: ImportedRow = { ...row };
             for (const [key, value] of Object.entries(changes)) {
-              (merged as unknown as Record<string, unknown>)[key] = value === null ? undefined : value;
+              (merged as unknown as Record<string, unknown>)[key] =
+                value === null ? undefined : value;
             }
             return merged;
           });
 
-        // Aplicação otimista: a interface reflete a mudança imediatamente.
-        setAthletesByEvent((current) => ({
-          ...current,
-          [selectedEventId]: applyLocal(current[selectedEventId] ?? []),
-        }));
-
-        if (!auth) return;
+        if (!auth) {
+          setAthletesByEvent((current) => ({
+            ...current,
+            [selectedEventId]: applyLocal(current[selectedEventId] ?? []),
+          }));
+          return;
+        }
 
         const payload: Record<string, unknown> = {};
         for (const [key, value] of Object.entries(changes)) {
@@ -475,33 +633,43 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           payload[BACKEND_FIELD_MAP[key] ?? key] = value;
         }
 
-        try {
-          const updated = await apiUpdateAthlete(
-            auth.token,
-            selectedEventId,
-            athleteId,
-            payload,
-          );
-          const mapped = mapBackendAthlete(updated);
-          setAthletesByEvent((current) => {
-            const rows = current[selectedEventId] ?? [];
-            return {
-              ...current,
-              [selectedEventId]: rows.map((row) => (row.id === athleteId ? mapped : row)),
-            };
-          });
-        } catch {
-          // mantém o estado local se o backend falhar
-        }
+        const updated = await apiUpdateAthlete(
+          auth.token,
+          selectedEventId,
+          athleteId,
+          payload,
+        );
+        const mapped = mapBackendAthlete(updated);
+        setAthletesByEvent((current) => {
+          const rows = current[selectedEventId] ?? [];
+          return {
+            ...current,
+            [selectedEventId]: rows.map((row) =>
+              row.id === athleteId ? mapped : row,
+            ),
+          };
+        });
       },
     };
-  }, [users, currentUserId, events, selectedEventId, athletesByEvent, auth, login, logout, hydrated]);
+  }, [
+    users,
+    currentUserId,
+    events,
+    selectedEventId,
+    athletesByEvent,
+    auth,
+    login,
+    logout,
+    hydrated,
+    sessionExpired,
+  ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useAppState() {
   const context = useContext(AppContext);
-  if (!context) throw new Error("useAppState deve ser usado dentro de AppStateProvider");
+  if (!context)
+    throw new Error('useAppState deve ser usado dentro de AppStateProvider');
   return context;
 }
