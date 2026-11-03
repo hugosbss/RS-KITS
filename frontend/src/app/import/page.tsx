@@ -1,5 +1,6 @@
-import { RequireAuth } from "@/components/providers/require-auth";
-import { ImportShell } from "@/components/import/import";
+import type { Metadata } from 'next';
+import { RequireAuth } from '@/components/providers/require-auth';
+import { ImportShell } from '@/components/import/import';
 
 export default function ImportPage() {
   return (
@@ -8,3 +9,5 @@ export default function ImportPage() {
     </RequireAuth>
   );
 }
+
+export const metadata: Metadata = { title: 'Importacao de atletas' };

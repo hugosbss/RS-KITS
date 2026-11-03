@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme inline {
   --color-background: oklch(1 0 0);
@@ -29,6 +29,24 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+  }
+  button:not(:disabled),
+  a[href],
+  [role='button']:not([aria-disabled='true']),
+  input[type='submit']:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  input:disabled,
+  select:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+  button:focus-visible,
+  a[href]:focus-visible,
+  [role='button']:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 3px;
   }
 }
 
