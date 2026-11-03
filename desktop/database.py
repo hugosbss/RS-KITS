@@ -104,7 +104,7 @@ ATHLETE_COLUMNS = [
     "alerta", "nome_evento", "pin", "status", "data_entrega", "usuario_entrega",
     "nome_entrega", "cpf_entrega", "fone_entrega", "email_entrega", "terceiro",
     "data_estorno", "usuario_estorno", "contato_emergencia", "relacao_atleta",
-    "telefone_emergencia", "created_at", "updated_at",
+    "telefone_emergencia", "created_at", "updated_at", "itens_adicionais", "convenio_medico", "tipo_sanguineo", "obs_entrega", "contato", "grau_parentesco", "celular_contato",
 ]
 
 USER_COLUMNS = [
@@ -126,6 +126,12 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    if password_hash.startswith(("$2a$", "$2b$", "$2y$")):
+        import bcrypt
+        try:
+            return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+        except ValueError:
+            return False
     return hash_password(password) == password_hash
 
 
@@ -142,6 +148,10 @@ def init_db() -> None:
     conn = get_conn()
     try:
         conn.executescript(SCHEMA)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(athletes)")}
+        for column in ("itens_adicionais", "convenio_medico", "tipo_sanguineo", "obs_entrega", "contato", "grau_parentesco", "celular_contato"):
+            if column not in columns:
+                conn.execute(f"ALTER TABLE athletes ADD COLUMN {column} TEXT")
         conn.execute(
             "INSERT OR IGNORE INTO sync_state (id, last_push, last_pull, pending_changes) VALUES (1, NULL, NULL, 0)"
         )
@@ -152,7 +162,7 @@ def init_db() -> None:
 
 
 def seed() -> None:
-    """Garante a conta de administrador padrão (admin@rksits.com / admin123).
+    """Garante a conta de administrador padrão (admin@rskits.com / admin123).
 
     Idempotente: banco novo cria somente o ADMIN. Banco existente apenas
     garante que o usuário 'admin' exista com a role ADMIN, sem duplicar,
@@ -164,7 +174,7 @@ def seed() -> None:
         if row is None:
             conn.execute(
                 "INSERT INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
-                " VALUES ('admin', 'Administrador', 'admin@rksits.com', '000.000.000-00', ?, 'ADMIN', ?, ?)",
+                " VALUES ('admin', 'Administrador', 'admin@rskits.com', '000.000.000-00', ?, 'ADMIN', ?, ?)",
                 (hash_password("admin123"), now(), now()),
             )
         else:
@@ -173,7 +183,7 @@ def seed() -> None:
             if row["role"] != "ADMIN":
                 changes.append("role = 'ADMIN'")
             if not row["email"]:
-                changes.append("email = 'admin@rksits.com'")
+                changes.append("email = 'admin@rskits.com'")
             if changes:
                 changes.append("updated_at = ?")
                 params.append(now())
@@ -238,7 +248,7 @@ def get_config(key: str, default: str | None = None) -> str | None:
 
 def set_access_code(organizer_id: str, code: str) -> None:
     """Armazena o código de acesso do organizador como hash (sha256)."""
-    hashed = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    hashed = hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
     set_config(f"org_code_{organizer_id}", hashed)
 
 

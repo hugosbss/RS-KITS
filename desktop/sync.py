@@ -65,6 +65,10 @@ def probe_online() -> bool:
 
 
 def push() -> dict:
+    import embedded_data
+    if embedded_data.event_id():
+        return {"status": "unsupported", "online": False, "pushed": 0,
+                "message": "Sincronização central indisponível para esta distribuição. As alterações continuam preservadas no banco local; nenhuma foi marcada como sincronizada."}
     changes = compile_changes()
     if not changes:
         return {
@@ -107,6 +111,10 @@ def push() -> dict:
 
 def pull() -> dict:
     """Recebe atualizações da nuvem (protótipo: apenas registra o retorno)."""
+    import embedded_data
+    if embedded_data.event_id():
+        return {"status": "unsupported", "online": False,
+                "message": "Sincronização central indisponível para esta distribuição. O banco local não foi alterado."}
     try:
         result = _http_json("GET", f"{cloud_url().rstrip('/')}/api/sync/pull")
         database.execute(

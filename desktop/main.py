@@ -35,6 +35,8 @@ import sys
 import threading
 import time
 import urllib.request
+from contextlib import ExitStack
+import runtime
 
 APP_VERSION = "1.0.0"
 TITLE = "RS KITS"
@@ -65,18 +67,23 @@ def setup_logging(logs_dir: str) -> None:
     )
 
 
-def start_backend(port: int) -> threading.Thread:
-    """Sobe o FastAPI local em thread e devolve a thread."""
+def start_backend(listener):
+    """Sobe o FastAPI local e devolve a função de encerramento."""
+
+    import uvicorn
+    import server
+    backend = uvicorn.Server(uvicorn.Config(server.app, log_level="warning"))
 
     def _run() -> None:
-        import uvicorn
-        import server  # noqa: F401  (registra rotas; importa e já prepara o SQLite)
-
-        uvicorn.run(server.app, host="127.0.0.1", port=port, log_level="warning")
+        backend.run(sockets=[listener])
 
     thread = threading.Thread(target=_run, name="rskits-backend", daemon=True)
     thread.start()
-    return thread
+    def stop():
+        backend.should_exit = True
+        thread.join(timeout=10)
+
+    return stop
 
 
 def wait_for_backend(port: int, timeout: float = 30.0) -> bool:
@@ -85,7 +92,8 @@ def wait_for_backend(port: int, timeout: float = 30.0) -> bool:
     while time.time() < deadline:
         try:
             with urllib.request.urlopen(url, timeout=2) as response:
-                if response.status == 200:
+                import embedded_data
+                if response.status == 200 and runtime.health_matches(response, embedded_data.event_id()):
                     return True
         except Exception:
             pass
@@ -153,11 +161,19 @@ def inject_desktop_bridge(window) -> None:
 
 
 def main() -> None:
+    with ExitStack() as resources:
+        run_application(resources)
+
+
+def run_application(resources) -> None:
+    runtime.ENFORCE_IDENTITY = True
     args = parse_args()
+    import embedded_data
+    embedded_data.prepare_profile()
 
     # Variáveis de ambiente ANTES de importar config/server.
     if args.port:
-        os.environ.setdefault("RSKITS_PORT", str(args.port))
+        os.environ["RSKITS_PORT"] = str(args.port)
     if args.data_dir:
         os.environ["RSKITS_DATA_DIR"] = os.path.join(args.data_dir, "database")
         os.environ["RSKITS_PACKAGES_DIR"] = os.path.join(args.data_dir, "packages")
@@ -165,10 +181,16 @@ def main() -> None:
         os.environ["RSKITS_CONFIG_DIR"] = os.path.join(args.data_dir, "config")
         os.environ["RSKITS_CACHE_DIR"] = os.path.join(args.data_dir, "cache")
 
+    explicit_port = bool(args.port or os.environ.get("RSKITS_PORT"))
+    listener = runtime.reserve_listener(int(os.environ.get("RSKITS_PORT", "19090")), strict=explicit_port)
+    resources.callback(listener.close)
+    os.environ["RSKITS_PORT"] = str(listener.getsockname()[1])
     import config
-    import server  # noqa: F401  (importar registra as rotas e prepara o SQLite)
-
+    lease = runtime.ProfileLease(config.DATA_DIR)
+    resources.callback(lease.close)
     setup_logging(args.logs_dir or config.LOGS_DIR)
+    import server  # validates the event binding before serving any request
+
     config.ensure_dirs()
 
     log = logging.getLogger("rskits")
@@ -190,7 +212,7 @@ def main() -> None:
 
         log.info("Backend no ar em %s/api (headless). Ctrl+C para encerrar.", config.APP_URL)
         try:
-            uvicorn.run(server.app, host="127.0.0.1", port=config.PORT, log_level="warning")
+            uvicorn.Server(uvicorn.Config(server.app, log_level="warning")).run(sockets=[listener])
         except KeyboardInterrupt:
             return
         return
@@ -206,7 +228,7 @@ def main() -> None:
                   file=sys.stderr)
         raise SystemExit(1) from exc
 
-    start_backend(config.PORT)
+    resources.callback(start_backend(listener))
     if not wait_for_backend(config.PORT, timeout=40.0):
         log.error("Backend local não respondeu em %s", config.APP_URL)
         raise SystemExit(1)
@@ -279,3 +301,7 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         sys.exit(0)
+    except Exception as exc:
+        logging.getLogger("rskits").exception("Falha na inicialização")
+        runtime.show_startup_error(exc, interactive="--no-window" not in sys.argv)
+        sys.exit(1)

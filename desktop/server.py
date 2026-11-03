@@ -21,6 +21,10 @@ import config
 import database as db
 import package_builder
 import sync
+import runtime
+from fastapi.responses import JSONResponse
+from event_profile import assert_event, validate_database
+import embedded_data
 from models import (
     AuditCreate,
     DeliverRequest,
@@ -36,6 +40,7 @@ from models import (
 )
 
 config.ensure_dirs()
+validate_database(config.DB_PATH, embedded_data.event_id())
 db.init_db()
 
 
@@ -154,6 +159,23 @@ def auto_install_packages() -> None:
 
 
 app = FastAPI(title="RS KITS Desktop")
+
+
+@app.middleware("http")
+async def enforce_event_profile(request: Request, call_next):
+    """The distribution's event boundary also applies to direct API calls."""
+    if runtime.ENFORCE_IDENTITY and request.url.path.startswith('/api/') and request.url.path != '/api/health':
+        if request.headers.get('X-RSKITS-Instance') != runtime.INSTANCE_ID:
+            return JSONResponse({"message": "Esta janela não pertence à instância atual. Reabra o aplicativo usando a versão atualizada."}, status_code=403)
+    expected = embedded_data.event_id()
+    if expected:
+        parts = request.url.path.strip("/").split("/")
+        if parts[:2] == ["api", "events"]:
+            if len(parts) > 2 and parts[2] != expected:
+                return JSONResponse({"message": "Este evento não pertence ao executável."}, status_code=403)
+            if (request.method == "POST" and len(parts) == 2) or (request.method == "DELETE" and len(parts) == 3):
+                return JSONResponse({"message": "O evento vinculado ao executável não pode ser criado ou excluído neste perfil."}, status_code=403)
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
@@ -312,22 +334,47 @@ def upsert_athletes(event_id: str, rows: list[dict], usuario: str | None = None)
     imported = updated = 0
     audits = []
     try:
-        for row in rows:
+        conn.execute("BEGIN IMMEDIATE")
+        def num_key(value):
+            text = str(value or "").strip().upper()
+            return str(int(text)) if text.isdigit() else text
+        def cpf_key(value):
+            return "".join(c for c in str(value or "") if c.isdigit())
+        existing_nums, existing_cpfs = {}, {}
+        for athlete in conn.execute("SELECT * FROM athletes WHERE event_id = ?", (event_id,)):
+            for key, mapping in ((num_key(athlete["num"]), existing_nums), (cpf_key(athlete["cpf_atleta"]), existing_cpfs)):
+                if key:
+                    mapping.setdefault(key, []).append(athlete)
+        prepared, nums, cpfs = [], set(), set()
+        for index, row in enumerate(rows):
             data = package_builder.json_to_db_athlete(normalize_frontend_row(row))
+            num, cpf = num_key(data.get("num")), cpf_key(data.get("cpf_atleta"))
+            matches_num, matches_cpf = existing_nums.get(num, []), existing_cpfs.get(cpf, [])
+            reason = None
+            if not str(data.get("nome_atleta") or "").strip() or not (num or cpf):
+                reason = "Informe nome e NUM ou CPF"
+            elif (num and num in nums) or (cpf and cpf in cpfs):
+                reason = "NUM ou CPF duplicado na planilha"
+            elif len(matches_num) > 1 or len(matches_cpf) > 1:
+                reason = "Cadastros existentes duplicados"
+            elif matches_num and cpf and cpf_key(matches_num[0]["cpf_atleta"]) not in ("", cpf):
+                reason = "NUM pertence a outro CPF"
+            elif matches_cpf and num and num_key(matches_cpf[0]["num"]) not in ("", num):
+                reason = "CPF pertence a outro NUM"
+            if reason:
+                raise HTTPException(status_code=400, detail=f"Linha {index + 2}: {reason}. Nenhum atleta foi importado.")
+            nums.add(num)
+            cpfs.add(cpf)
+            prepared.append((data, (matches_num or matches_cpf or [None])[0]))
+        for data, existing in prepared:
             data["event_id"] = event_id
             data["updated_at"] = now()
             data["created_at"] = now()
             if not data.get("status"):
                 data["status"] = "PENDENTE"
-            existing = None
-            if data.get("cpf_atleta"):
-                existing = conn.execute(
-                    "SELECT id FROM athletes WHERE event_id = ? AND cpf_atleta = ?",
-                    (event_id, data["cpf_atleta"]),
-                ).fetchone()
             if existing:
                 preserve = [
-                    "status", "data_entrega", "usuario_entrega", "nome_entrega",
+                    "id", "event_id", "obs_entrega", "status", "data_entrega", "usuario_entrega", "nome_entrega",
                     "cpf_entrega", "fone_entrega", "email_entrega", "terceiro",
                     "data_estorno", "usuario_estorno", "created_at",
                 ]
@@ -369,8 +416,13 @@ def upsert_athletes(event_id: str, rows: list[dict], usuario: str | None = None)
 
 # Importação/instalação automática no boot. Executa DEPOIS de todas as
 # definições acima (now/_sync_package_organizer_fields/upsert_athletes etc.).
-import_downloaded_packages()
-auto_install_packages()
+embedded_data.install(db)
+if not embedded_data.is_distribution():
+    # Unbound builds must not select arbitrary events from Downloads/Desktop.
+    # Legacy automatic installation is available only by explicit opt-in.
+    if os.environ.get("RSKITS_AUTO_IMPORT_PACKAGES") == "1":
+        import_downloaded_packages()
+        auto_install_packages()
 
 
 # --------------------------------------------------------------------------- #
@@ -378,34 +430,9 @@ auto_install_packages()
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/login")
 def login(payload: LoginRequest):
-    """Autentica por perfil. O nome NÃO é identificador de login.
-
-    ADMIN       -> 'admin' (exceção vinculada ao usuário admin padrão) ou e-mail
-    ORGANIZADOR -> CNPJ, e-mail ou código de acesso
-    OPERADOR    -> CPF (somente)
-    """
-    identifier = payload.identifier.strip()
-    row = None
-
-    # ADMIN: "admin" é exceção exclusiva do usuário administrativo padrão.
-    if identifier == "admin":
-        row = db.fetch_one(
-            "SELECT * FROM users WHERE id = 'admin' AND role = 'ADMIN'")
-    if row is None:
-        row = db.fetch_one(
-            "SELECT * FROM users WHERE role = 'ADMIN' AND TRIM(email) = ?", (identifier,))
-    if row is None:
-        row = db.fetch_one(
-            "SELECT * FROM users WHERE role = 'ORGANIZADOR'"
-            " AND (TRIM(email) = ? OR TRIM(cnpj) = ?)",
-            (identifier, identifier))
-    if row is None:
-        row = db.fetch_one(
-            "SELECT * FROM users WHERE role = 'OPERADOR' AND TRIM(cpf) = ?", (identifier,))
-    if row is None:
-        row = db.find_user_by_access_code(identifier)
-
-    if not row or not db.verify_password(payload.password, row["password_hash"]):
+    from authentication import authenticate
+    row = authenticate(payload.identifier, payload.password)
+    if not row:
         raise HTTPException(401, "Identificador ou senha inválidos.")
     return {"user": serialize_user(row), "access_token": row["id"]}
 
@@ -454,7 +481,7 @@ def me(request: Request):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "rskits-desktop", "port": config.PORT}
+    return {"status": "ok", "service": "rskits-desktop", "port": config.PORT, "instanceId": runtime.INSTANCE_ID, "eventId": embedded_data.event_id()}
 
 
 # --------------------------------------------------------------------------- #
@@ -769,8 +796,22 @@ def create_operator(request: Request, payload: OperatorCreate):
 
 
 @app.get("/api/users")
-def list_users():
-    return [serialize_user(r) for r in db.fetch_all("SELECT * FROM users ORDER BY role, name")]
+def list_users(request: Request, eventId: str | None = None):
+    user = require_role(request, {"ADMIN", "ORGANIZADOR", "OPERADOR"})
+    rows = db.fetch_all("SELECT * FROM users ORDER BY role, name")
+    if user["role"] == "OPERADOR":
+        return [serialize_user(r) for r in rows if r["id"] == user["id"]]
+    if eventId:
+        if not db.fetch_one("SELECT id FROM events WHERE id=?", (eventId,)):
+            raise HTTPException(404, "Evento não encontrado.")
+        organizer_ids = set(_event_organizer_ids(eventId))
+        if user["role"] == "ORGANIZADOR" and user["id"] not in organizer_ids:
+            raise HTTPException(403, "Acesso negado ao evento.")
+        rows = [r for r in rows if (r["role"] == "ORGANIZADOR" and r["id"] in organizer_ids) or (r["role"] == "OPERADOR" and r["organizer_id"] in organizer_ids)]
+    if user["role"] == "ORGANIZADOR":
+        linked = any(user["id"] in _event_organizer_ids(event["id"]) for event in db.fetch_all("SELECT id FROM events"))
+        rows = [r for r in rows if linked and (r["id"] == user["id"] or (r["role"] == "OPERADOR" and r["organizer_id"] == user["id"]))]
+    return [serialize_user(r) for r in rows]
 
 
 @app.post("/api/organizers")
@@ -804,6 +845,14 @@ def update_user(request: Request, user_id: str, payload: UserUpdate):
 
     changes: list[str] = []
     params: list = []
+    if payload.organizerId is not None:
+        if user["role"] != "ADMIN" or row["role"] != "OPERADOR":
+            raise HTTPException(403, "Apenas o administrador altera o organizador de um operador.")
+        organizer = db.fetch_one("SELECT role FROM users WHERE id = ?", (payload.organizerId,))
+        if not organizer or organizer["role"] != "ORGANIZADOR":
+            raise HTTPException(400, "Selecione um organizador válido.")
+        changes.append("organizer_id = ?")
+        params.append(payload.organizerId)
     for col in ("name", "cpf", "cnpj", "email", "phone"):
         value = getattr(payload, col, None)
         if value is not None:
@@ -965,6 +1014,10 @@ def install_package(request: Request, payload: InstallRequest):
     pkg = package_builder.read_package(path)
 
     event = pkg.get("event", {})
+    try:
+        assert_event(embedded_data.event_id(), event.get("id"))
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc
     event_id = event.get("id") or db.new_id()
     existing = db.fetch_one("SELECT id FROM events WHERE id = ?", (event_id,))
     if existing:
@@ -1065,12 +1118,14 @@ def _iter_releases() -> list[dict]:
 
 
 @app.get("/api/downloads")
-def list_downloads():
+def list_downloads(request: Request):
+    require_role(request, {"ADMIN"})
     return _iter_releases()
 
 
 @app.get("/api/downloads/{filename}")
-def download_file(filename: str):
+def download_file(request: Request, filename: str):
+    require_role(request, {"ADMIN"})
     safe = os.path.basename(filename)
     if safe != filename:
         raise HTTPException(404, "Arquivo inválido.")
