@@ -1,0 +1,15 @@
+node_modules
+.next
+.next-dev
+out
+dist
+build
+coverage
+package-lock.json
+backend/downloads
+backend/web
+frontend/public/sw.js
+frontend/public/workbox-*.js
+frontend/public/worker-*.js
+frontend/next-env.d.ts
+*.tsbuildinfo
