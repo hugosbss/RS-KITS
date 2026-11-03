@@ -19,7 +19,7 @@ import {
 
 const BCRYPT_ROUNDS = 10;
 
-type CurrentUser = { id: string; role: UserRole };
+type CurrentUser = { id: string; role: UserRole; organizerId?: string | null };
 
 @Injectable()
 export class UsersService {
@@ -33,7 +33,43 @@ export class UsersService {
    * ORGANIZADOR: si mesmo e os OPERATOR vinculados a ele.
    * OPERATOR: apenas si mesmo.
    */
-  async findAll(currentUser: CurrentUser) {
+  async findAll(currentUser: CurrentUser, eventId?: string) {
+    if (eventId) {
+      const event = await this.prisma.event.findUnique({
+        where: { id: eventId },
+        select: { organizers: { select: { userId: true } } },
+      });
+      if (!event) throw new NotFoundException('Evento não encontrado');
+      const organizerIds = event.organizers.map((link) => link.userId);
+      if (
+        currentUser.role === UserRole.ORGANIZADOR &&
+        !organizerIds.includes(currentUser.id)
+      )
+        throw new ForbiddenException('Acesso negado ao evento');
+      if (currentUser.role === UserRole.OPERATOR) {
+        if (
+          !currentUser.organizerId ||
+          !organizerIds.includes(currentUser.organizerId)
+        )
+          throw new ForbiddenException('Acesso negado ao evento');
+        return this.prisma.user.findMany({
+          where: { id: currentUser.id },
+          select: this.userSelect(),
+        });
+      }
+      const ids =
+        currentUser.role === UserRole.ADMIN ? organizerIds : [currentUser.id];
+      return this.prisma.user.findMany({
+        where: {
+          OR: [
+            { id: { in: ids }, role: UserRole.ORGANIZADOR },
+            { organizerId: { in: ids }, role: UserRole.OPERATOR },
+          ],
+        },
+        orderBy: { createdAt: 'asc' },
+        select: this.userSelect(),
+      });
+    }
     if (currentUser.role === UserRole.ADMIN) {
       return this.prisma.user.findMany({
         orderBy: { createdAt: 'asc' },
@@ -44,6 +80,14 @@ export class UsersService {
     if (currentUser.role === UserRole.ORGANIZADOR) {
       return this.prisma.user.findMany({
         where: {
+          AND: [
+            {
+              OR: [
+                { eventLinks: { some: {} } },
+                { organizer: { eventLinks: { some: {} } } },
+              ],
+            },
+          ],
           OR: [
             { id: currentUser.id },
             { role: UserRole.OPERATOR, organizerId: currentUser.id },
@@ -98,9 +142,7 @@ export class UsersService {
           target.role === UserRole.OPERATOR &&
           target.organizerId === currentUser.id);
       if (!canManage) {
-        throw new ForbiddenException(
-          'Sem permissão para alterar esse usuário',
-        );
+        throw new ForbiddenException('Sem permissão para alterar esse usuário');
       }
     }
 
@@ -113,13 +155,18 @@ export class UsersService {
         'Apenas ADMIN pode alterar o vínculo com o organizador',
       );
     }
-    if (currentUser.role === UserRole.ORGANIZADOR && !isSelf && dto.accessCode !== undefined) {
+    if (
+      currentUser.role === UserRole.ORGANIZADOR &&
+      !isSelf &&
+      dto.accessCode !== undefined
+    ) {
       throw new ForbiddenException(
         'ORGANIZADOR não pode alterar o código de acesso',
       );
     }
 
-    const email = dto.email === undefined ? undefined : normalizeEmail(dto.email);
+    const email =
+      dto.email === undefined ? undefined : normalizeEmail(dto.email);
     const cpf = dto.cpf === undefined ? undefined : normalizeCpf(dto.cpf);
     const cnpj = dto.cnpj === undefined ? undefined : normalizeCnpj(dto.cnpj);
     const accessCode =
@@ -255,9 +302,7 @@ export class UsersService {
         target.role === UserRole.OPERATOR &&
         target.organizerId === currentUser.id);
     if (!canRemove) {
-      throw new ForbiddenException(
-        'Sem permissão para remover esse usuário',
-      );
+      throw new ForbiddenException('Sem permissão para remover esse usuário');
     }
     await this.prisma.user.delete({ where: { id } });
 

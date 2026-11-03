@@ -1,9 +1,10 @@
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "/api";
+import { sessionFetch } from './session';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
 export { API_URL };
 
-export type BackendUserRole = "ADMIN" | "ORGANIZADOR" | "OPERATOR";
+export type BackendUserRole = 'ADMIN' | 'ORGANIZADOR' | 'OPERATOR';
 
 export type BackendUser = {
   id: string;
@@ -32,6 +33,7 @@ export type RegisterUser = {
   role: BackendUserRole;
   phone?: string;
   accessCode?: string;
+  organizerId?: string;
 };
 
 type ApiError = {
@@ -44,9 +46,9 @@ export async function login(
   identifier: string,
   password: string,
 ): Promise<LoginResponse> {
-  const response = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await sessionFetch(`${API_URL}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ identifier, password }),
   });
 
@@ -57,9 +59,10 @@ export async function login(
     } catch {
       // corpo de erro não-JSON
     }
-    let message = "Não foi possível entrar. Verifique suas credenciais.";
-    if (Array.isArray(detail.message)) message = detail.message.join(". ");
-    else if (typeof detail.message === "string" && detail.message) message = detail.message;
+    let message = 'Não foi possível entrar. Verifique suas credenciais.';
+    if (Array.isArray(detail.message)) message = detail.message.join('. ');
+    else if (typeof detail.message === 'string' && detail.message)
+      message = detail.message;
 
     throw new Error(message);
   }
@@ -71,10 +74,10 @@ export async function registerUser(
   data: RegisterUser,
   token: string,
 ): Promise<BackendUser> {
-  const response = await fetch(`${API_URL}/auth/register`, {
-    method: "POST",
+  const response = await sessionFetch(`${API_URL}/auth/register`, {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(data),
@@ -87,9 +90,10 @@ export async function registerUser(
     } catch {
       // corpo de erro não-JSON
     }
-    let message = "Não foi possível criar o usuário.";
-    if (Array.isArray(detail.message)) message = detail.message.join(". ");
-    else if (typeof detail.message === "string" && detail.message) message = detail.message;
+    let message = 'Não foi possível criar o usuário.';
+    if (Array.isArray(detail.message)) message = detail.message.join('. ');
+    else if (typeof detail.message === 'string' && detail.message)
+      message = detail.message;
 
     throw new Error(message);
   }
@@ -98,24 +102,36 @@ export async function registerUser(
   return body.user;
 }
 
-export async function fetchUsers(token: string): Promise<BackendUser[]> {
-  const response = await fetch(`${API_URL}/users`, {
+export async function fetchUsers(
+  token: string,
+  eventId?: string,
+): Promise<BackendUser[]> {
+  const suffix = eventId ? `?eventId=${encodeURIComponent(eventId)}` : '';
+  const response = await sessionFetch(`${API_URL}/users${suffix}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  if (!response.ok) throw new Error("Não foi possível carregar os usuários.");
+  if (!response.ok) throw new Error('Não foi possível carregar os usuários.');
   return (await response.json()) as BackendUser[];
 }
 
 export async function updateUserBackend(
   id: string,
-  changes: { name?: string; cpf?: string; cnpj?: string; email?: string; phone?: string; password?: string },
+  changes: {
+    name?: string;
+    cpf?: string;
+    cnpj?: string;
+    email?: string;
+    phone?: string;
+    password?: string;
+    organizerId?: string;
+  },
   token: string,
 ): Promise<BackendUser> {
-  const response = await fetch(`${API_URL}/users/${id}`, {
-    method: "PATCH",
+  const response = await sessionFetch(`${API_URL}/users/${id}`, {
+    method: 'PATCH',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(changes),
@@ -128,18 +144,25 @@ export async function updateUserBackend(
     } catch {
       // corpo de erro não-JSON
     }
-    throw new Error(typeof detail.message === "string" ? detail.message : "Não foi possível atualizar o usuário.");
+    throw new Error(
+      typeof detail.message === 'string'
+        ? detail.message
+        : 'Não foi possível atualizar o usuário.',
+    );
   }
   return (await response.json()) as BackendUser;
 }
 
-export async function deleteUserBackend(id: string, token: string): Promise<void> {
-  const response = await fetch(`${API_URL}/users/${id}`, {
-    method: "DELETE",
+export async function deleteUserBackend(
+  id: string,
+  token: string,
+): Promise<void> {
+  const response = await sessionFetch(`${API_URL}/users/${id}`, {
+    method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
 
-  if (!response.ok) throw new Error("Não foi possível excluir o usuário.");
+  if (!response.ok) throw new Error('Não foi possível excluir o usuário.');
 }
 
 // ---------------------------------------------------------------------------
@@ -147,10 +170,7 @@ export async function deleteUserBackend(id: string, token: string): Promise<void
 // ---------------------------------------------------------------------------
 
 export type BackendEventStatus =
-  | "RASCUNHO"
-  | "PROXIMO"
-  | "EM_ANDAMENTO"
-  | "FINALIZADO";
+  'RASCUNHO' | 'PROXIMO' | 'EM_ANDAMENTO' | 'FINALIZADO';
 
 export type BackendEvent = {
   id: string;
@@ -228,37 +248,47 @@ export type EventPayload = {
   status?: BackendEventStatus;
 };
 
-async function parseError(response: Response, fallback: string): Promise<never> {
+async function parseError(
+  response: Response,
+  fallback: string,
+): Promise<never> {
   let detail: ApiError = {};
   try {
     detail = (await response.json()) as ApiError;
   } catch {
     // corpo de erro não-JSON
   }
-  if (Array.isArray(detail.message)) throw new Error(detail.message.join(". "));
+  if (Array.isArray(detail.message)) throw new Error(detail.message.join('. '));
   throw new Error(
-    typeof detail.message === "string" && detail.message ? detail.message : fallback,
+    typeof detail.message === 'string' && detail.message
+      ? detail.message
+      : fallback,
   );
 }
 
 const jsonHeaders = (token: string) => ({
-  "Content-Type": "application/json",
+  'Content-Type': 'application/json',
   Authorization: `Bearer ${token}`,
 });
 
 export async function fetchEvents(token: string): Promise<BackendEvent[]> {
-  const response = await fetch(`${API_URL}/events`, {
+  const response = await sessionFetch(`${API_URL}/events`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) await parseError(response, "Não foi possível carregar os eventos.");
+  if (!response.ok)
+    await parseError(response, 'Não foi possível carregar os eventos.');
   return (await response.json()) as BackendEvent[];
 }
 
-export async function fetchEvent(token: string, eventId: string): Promise<BackendEvent> {
-  const response = await fetch(`${API_URL}/events/${eventId}`, {
+export async function fetchEvent(
+  token: string,
+  eventId: string,
+): Promise<BackendEvent> {
+  const response = await sessionFetch(`${API_URL}/events/${eventId}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) await parseError(response, "Não foi possível carregar o evento.");
+  if (!response.ok)
+    await parseError(response, 'Não foi possível carregar o evento.');
   return (await response.json()) as BackendEvent;
 }
 
@@ -266,12 +296,13 @@ export async function createEventBackend(
   token: string,
   payload: EventPayload,
 ): Promise<BackendEvent> {
-  const response = await fetch(`${API_URL}/events`, {
-    method: "POST",
+  const response = await sessionFetch(`${API_URL}/events`, {
+    method: 'POST',
     headers: jsonHeaders(token),
     body: JSON.stringify(payload),
   });
-  if (!response.ok) await parseError(response, "Não foi possível criar o evento.");
+  if (!response.ok)
+    await parseError(response, 'Não foi possível criar o evento.');
   return (await response.json()) as BackendEvent;
 }
 
@@ -280,31 +311,40 @@ export async function updateEventBackend(
   eventId: string,
   payload: EventPayload,
 ): Promise<BackendEvent> {
-  const response = await fetch(`${API_URL}/events/${eventId}`, {
-    method: "PATCH",
+  const response = await sessionFetch(`${API_URL}/events/${eventId}`, {
+    method: 'PATCH',
     headers: jsonHeaders(token),
     body: JSON.stringify(payload),
   });
-  if (!response.ok) await parseError(response, "Não foi possível atualizar o evento.");
+  if (!response.ok)
+    await parseError(response, 'Não foi possível atualizar o evento.');
   return (await response.json()) as BackendEvent;
 }
 
-export async function deleteEventBackend(token: string, eventId: string): Promise<void> {
-  const response = await fetch(`${API_URL}/events/${eventId}`, {
-    method: "DELETE",
+export async function deleteEventBackend(
+  token: string,
+  eventId: string,
+): Promise<void> {
+  const response = await sessionFetch(`${API_URL}/events/${eventId}`, {
+    method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) await parseError(response, "Não foi possível excluir o evento.");
+  if (!response.ok)
+    await parseError(response, 'Não foi possível excluir o evento.');
 }
 
 export async function fetchEventOrganizers(
   token: string,
   eventId: string,
 ): Promise<BackendOrganizerLink[]> {
-  const response = await fetch(`${API_URL}/events/${eventId}/organizers`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) await parseError(response, "Não foi possível carregar os organizadores.");
+  const response = await sessionFetch(
+    `${API_URL}/events/${eventId}/organizers`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!response.ok)
+    await parseError(response, 'Não foi possível carregar os organizadores.');
   return (await response.json()) as BackendOrganizerLink[];
 }
 
@@ -313,12 +353,16 @@ export async function addEventOrganizer(
   eventId: string,
   userId: string,
 ): Promise<BackendOrganizerLink[]> {
-  const response = await fetch(`${API_URL}/events/${eventId}/organizers`, {
-    method: "POST",
-    headers: jsonHeaders(token),
-    body: JSON.stringify({ userId }),
-  });
-  if (!response.ok) await parseError(response, "Não foi possível vincular o organizador.");
+  const response = await sessionFetch(
+    `${API_URL}/events/${eventId}/organizers`,
+    {
+      method: 'POST',
+      headers: jsonHeaders(token),
+      body: JSON.stringify({ userId }),
+    },
+  );
+  if (!response.ok)
+    await parseError(response, 'Não foi possível vincular o organizador.');
   return (await response.json()) as BackendOrganizerLink[];
 }
 
@@ -327,11 +371,15 @@ export async function removeEventOrganizer(
   eventId: string,
   userId: string,
 ): Promise<BackendOrganizerLink[]> {
-  const response = await fetch(`${API_URL}/events/${eventId}/organizers/${userId}`, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) await parseError(response, "Não foi possível desvincular o organizador.");
+  const response = await sessionFetch(
+    `${API_URL}/events/${eventId}/organizers/${userId}`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!response.ok)
+    await parseError(response, 'Não foi possível desvincular o organizador.');
   return (await response.json()) as BackendOrganizerLink[];
 }
 
@@ -341,16 +389,23 @@ export async function fetchAthletes(
   query: { search?: string; limit?: number; offset?: number } = {},
 ): Promise<{ total: number; athletes: BackendAthlete[] }> {
   const params = new URLSearchParams();
-  if (query.search) params.set("search", query.search);
-  if (query.limit) params.set("limit", String(query.limit));
-  if (query.offset) params.set("offset", String(query.offset));
+  if (query.search) params.set('search', query.search);
+  if (query.limit) params.set('limit', String(query.limit));
+  if (query.offset) params.set('offset', String(query.offset));
   const qs = params.toString();
 
-  const response = await fetch(`${API_URL}/events/${eventId}/athletes${qs ? `?${qs}` : ""}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!response.ok) await parseError(response, "Não foi possível carregar os atletas.");
-  return (await response.json()) as { total: number; athletes: BackendAthlete[] };
+  const response = await sessionFetch(
+    `${API_URL}/events/${eventId}/athletes${qs ? `?${qs}` : ''}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!response.ok)
+    await parseError(response, 'Não foi possível carregar os atletas.');
+  return (await response.json()) as {
+    total: number;
+    athletes: BackendAthlete[];
+  };
 }
 
 export async function importAthletesBackend(
@@ -358,13 +413,18 @@ export async function importAthletesBackend(
   eventId: string,
   athletes: Array<Record<string, unknown>>,
 ): Promise<{ imported: number; updated: number; total: number }> {
-  const response = await fetch(`${API_URL}/events/${eventId}/athletes`, {
-    method: "POST",
+  const response = await sessionFetch(`${API_URL}/events/${eventId}/athletes`, {
+    method: 'POST',
     headers: jsonHeaders(token),
     body: JSON.stringify({ athletes }),
   });
-  if (!response.ok) await parseError(response, "Não foi possível importar os atletas.");
-  return (await response.json()) as { imported: number; updated: number; total: number };
+  if (!response.ok)
+    await parseError(response, 'Não foi possível importar os atletas.');
+  return (await response.json()) as {
+    imported: number;
+    updated: number;
+    total: number;
+  };
 }
 
 export async function updateAthleteBackend(
@@ -373,12 +433,16 @@ export async function updateAthleteBackend(
   athleteId: string,
   changes: Record<string, unknown>,
 ): Promise<BackendAthlete> {
-  const response = await fetch(`${API_URL}/events/${eventId}/athletes/${athleteId}`, {
-    method: "PATCH",
-    headers: jsonHeaders(token),
-    body: JSON.stringify(changes),
-  });
-  if (!response.ok) await parseError(response, "Não foi possível atualizar o atleta.");
+  const response = await sessionFetch(
+    `${API_URL}/events/${eventId}/athletes/${athleteId}`,
+    {
+      method: 'PATCH',
+      headers: jsonHeaders(token),
+      body: JSON.stringify(changes),
+    },
+  );
+  if (!response.ok)
+    await parseError(response, 'Não foi possível atualizar o atleta.');
   return (await response.json()) as BackendAthlete;
 }
 
@@ -396,12 +460,13 @@ export async function postAudit(
     origem?: string;
   },
 ): Promise<void> {
-  const response = await fetch(`${API_URL}/audit`, {
-    method: "POST",
+  const response = await sessionFetch(`${API_URL}/audit`, {
+    method: 'POST',
     headers: jsonHeaders(token),
     body: JSON.stringify(payload),
   });
-  if (!response.ok) await parseError(response, "Não foi possível registrar o log.");
+  if (!response.ok)
+    await parseError(response, 'Não foi possível registrar o log.');
 }
 
 export type AppDownload = {
@@ -409,23 +474,51 @@ export type AppDownload = {
   file: string;
   size: number;
   url: string;
+  supportsEmbeddedData?: boolean;
 };
 
+export async function fetchExecutable(
+  file: string,
+  token: string | null,
+  eventId?: string,
+): Promise<Blob> {
+  const suffix = eventId ? `events/${encodeURIComponent(eventId)}` : 'clean';
+  const response = await sessionFetch(
+    `${API_URL}/downloads/${encodeURIComponent(file)}/${suffix}`,
+    { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+  );
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(
+      typeof detail.message === 'string'
+        ? detail.message
+        : 'Não foi possível preparar o executável.',
+    );
+  }
+  return response.blob();
+}
+
 // Instaladores do app desktop (Linux/Windows) servidos pelo backend web.
-export async function fetchDownloads(): Promise<AppDownload[]> {
-  const response = await fetch(`${API_URL}/downloads`);
-  if (!response.ok) throw new Error("Não foi possível carregar os downloads.");
+export async function fetchDownloads(
+  token?: string | null,
+): Promise<AppDownload[]> {
+  const response = await sessionFetch(`${API_URL}/downloads`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) throw new Error('Não foi possível carregar os downloads.');
   return (await response.json()) as AppDownload[];
 }
 
 // Desktop: retorna o id do evento preparado pela distribuição (.rksits importado).
 // No modo web o endpoint não existe — a chamada falha e a seleção cai no
 // comportamento padrão (preserva a seleção atual se ela ainda existir).
-export async function fetchActiveEventId(token: string): Promise<string | null> {
-  const response = await fetch(`${API_URL}/packages`, {
+export async function fetchActiveEventId(
+  token: string,
+): Promise<string | null> {
+  const response = await sessionFetch(`${API_URL}/packages`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!response.ok) throw new Error("Pacotes indisponíveis.");
+  if (!response.ok) throw new Error('Pacotes indisponíveis.');
   const data = (await response.json()) as { activeEventId?: string | null };
   return data.activeEventId ?? null;
 }

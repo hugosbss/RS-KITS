@@ -1,6 +1,7 @@
-"use client";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+'use client';
+import { navigateTo } from '@/services/navigation';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   BarChart3,
   CalendarDays,
@@ -9,30 +10,37 @@ import {
   Package2,
   PieChart,
   Settings,
-} from "lucide-react";
-import { useAppState } from "@/components/providers/app-context";
+  Users,
+  Download,
+} from 'lucide-react';
+import { useAppState } from '@/components/providers/app-context';
 
 const items = [
-  { label: "Dashboard", icon: BarChart3, href: "/dashboard" },
-  { label: "Entregar Kit", icon: Package2, href: "/delivery", featured: true },
-  { label: "Importar Planilha", icon: Package2, href: "/import" },
-  { label: "Relatórios", icon: ClipboardList, href: "/reports" },
-  { label: "Filtros", icon: PieChart, href: "/filters" },
-  { label: "Eventos", icon: CalendarDays, href: "/events" },
+  { label: 'Dashboard', icon: BarChart3, href: '/dashboard' },
+  { label: 'Entregar Kit', icon: Package2, href: '/delivery', featured: true },
+  { label: 'Importar Planilha', icon: Package2, href: '/import' },
+  { label: 'Relatórios', icon: ClipboardList, href: '/reports' },
+  { label: 'Filtros', icon: PieChart, href: '/filters' },
+  { label: 'Eventos', icon: CalendarDays, href: '/events' },
+  { label: 'Usuários', icon: Users, href: '/users' },
+  { label: 'Downloads', icon: Download, href: '/downloads' },
   // { label: "Utilitários", icon: }
-//   { label: "Inscritos", icon: Users, href: "#" },
-//   { label: "Operadores", icon: ShieldCheck, href: "#" },
+  //   { label: "Inscritos", icon: Users, href: "#" },
+  //   { label: "Operadores", icon: ShieldCheck, href: "#" },
 ];
 export function Sidebar() {
   const pathname = usePathname();
-  const { currentUser, logout, selectedEvent } = useAppState();
+  const { currentUser, logout } = useAppState();
   const visibleItems = items.filter((item) => {
-    if (item.href === "/events" || item.href === "/import") return currentUser.role === "ADMIN";
+    if (item.href === '/events' || item.href === '/import')
+      return currentUser.role === 'ADMIN';
+    if (item.href === '/downloads') return currentUser.role === 'ADMIN';
+    if (item.href === '/users') return currentUser.role !== 'OPERADOR';
     return true;
   });
   const handleLogout = () => {
     logout();
-    window.location.href = "/login";
+    navigateTo('/login');
   };
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200 bg-white lg:flex">
@@ -49,7 +57,7 @@ export function Sidebar() {
             <Link
               key={label}
               href={href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${active ? "bg-blue-50 text-blue-600" : featured ? "text-blue-600 hover:bg-blue-50" : "text-slate-600 hover:bg-slate-50"}`}
+              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${active ? 'bg-blue-50 text-blue-600' : featured ? 'text-blue-600 hover:bg-blue-50' : 'text-slate-600 hover:bg-slate-50'}`}
             >
               <Icon className="h-[18px] w-[18px]" />
               {label}
@@ -60,8 +68,12 @@ export function Sidebar() {
       </nav>
       <div className="border-t border-slate-100 p-3">
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="truncate text-xs font-bold text-slate-800">{currentUser.name}</p>
-          <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-600">{currentUser.role}</p>
+          <p className="truncate text-xs font-bold text-slate-800">
+            {currentUser.name}
+          </p>
+          <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-blue-600">
+            {currentUser.role}
+          </p>
           <button
             type="button"
             onClick={handleLogout}
@@ -72,12 +84,17 @@ export function Sidebar() {
           </button>
         </div>
       </div>
-      {currentUser.role !== "OPERADOR" && <div className="border-t border-slate-100 p-3">
-        <Link href="/settings" className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${pathname === "/settings" ? "bg-blue-50 text-blue-600" : "text-slate-600 hover:bg-slate-50"}`}>
-          <Settings className="h-[18px] w-[18px]" />
-          Configurações
-        </Link>
-      </div>}
+      {currentUser.role !== 'OPERADOR' && (
+        <div className="border-t border-slate-100 p-3">
+          <Link
+            href="/settings"
+            className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${pathname === '/settings' ? 'bg-blue-50 text-blue-600' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Settings className="h-[18px] w-[18px]" />
+            Configurações
+          </Link>
+        </div>
+      )}
     </aside>
   );
 }

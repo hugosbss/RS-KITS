@@ -55,9 +55,7 @@ export class UpdateUserDto {
   @IsString()
   @IsNotEmpty({ message: 'Nome não pode ser vazio' })
   @MaxLength(160)
-  @Transform(({ value }) =>
-    typeof value === 'string' ? value.trim() : value,
-  )
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   name?: string;
 
   @IsOptional()
@@ -78,7 +76,9 @@ export class UpdateUserDto {
   @IsOptional()
   @optional(normalizeAccessCode)
   @IsString()
-  @Length(4, 64, { message: 'Código de acesso deve ter entre 4 e 64 caracteres' })
+  @Length(4, 64, {
+    message: 'Código de acesso deve ter entre 4 e 64 caracteres',
+  })
   accessCode?: string;
 
   @IsOptional()

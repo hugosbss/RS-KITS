@@ -1,5 +1,6 @@
-import { RequireAuth } from "@/components/providers/require-auth";
-import { SettingsShell } from "@/components/settings/settings";
+import type { Metadata } from 'next';
+import { RequireAuth } from '@/components/providers/require-auth';
+import { SettingsShell } from '@/components/settings/settings';
 
 export default function SettingsPage() {
   return (
@@ -8,3 +9,5 @@ export default function SettingsPage() {
     </RequireAuth>
   );
 }
+
+export const metadata: Metadata = { title: 'Configuracoes' };
