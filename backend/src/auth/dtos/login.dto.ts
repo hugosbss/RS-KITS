@@ -22,8 +22,13 @@ export function canonicalizeIdentifier(raw: unknown): string {
   if (text === '') return text;
 
   const digits = text.replace(/\D+/g, '');
-  if (digits.length > 0 && digits.length === text.replace(/[\s.\-/]/g, '').length) {
-    return digits.length <= 11 ? (normalizeCpf(digits) ?? digits) : (normalizeCnpj(digits) ?? digits);
+  if (
+    digits.length > 0 &&
+    digits.length === text.replace(/[\s.\-/]/g, '').length
+  ) {
+    return digits.length <= 11
+      ? (normalizeCpf(digits) ?? digits)
+      : (normalizeCnpj(digits) ?? digits);
   }
   if (text.includes('@')) return normalizeEmail(text) ?? text;
   return normalizeAccessCode(text) ?? text;

@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import {
   Body,
   Controller,
@@ -31,7 +32,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR)
   @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDto, @Req() req: any) {
+  register(@Body() dto: RegisterDto, @Req() req: AuthenticatedRequest) {
     return this.authService.register(dto, req.user);
   }
 }

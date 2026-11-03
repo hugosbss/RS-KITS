@@ -94,7 +94,9 @@ export class RegisterDto {
     return code ?? undefined;
   })
   @IsString()
-  @Length(4, 64, { message: 'Código de acesso deve ter entre 4 e 64 caracteres' })
+  @Length(4, 64, {
+    message: 'Código de acesso deve ter entre 4 e 64 caracteres',
+  })
   accessCode?: string;
 
   @IsString()

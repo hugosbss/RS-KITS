@@ -36,10 +36,7 @@ export class AuthService {
    * - OPERATOR criado por ORGANIZADOR fica vinculado a esse organizador.
    * - OPERATOR criado por ADMIN precisa de um organizador válido e existente.
    */
-  async register(
-    dto: RegisterDto,
-    creator: { id: string; role: UserRole },
-  ) {
+  async register(dto: RegisterDto, creator: { id: string; role: UserRole }) {
     const creatorRole = creator.role;
 
     if (dto.role === UserRole.ADMIN && creatorRole !== UserRole.ADMIN) {

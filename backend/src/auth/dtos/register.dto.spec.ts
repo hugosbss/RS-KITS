@@ -1,9 +1,6 @@
 import 'reflect-metadata';
 import { plainToInstance } from 'class-transformer';
-import {
-  validateSync,
-  type ValidationError,
-} from 'class-validator';
+import { validateSync, type ValidationError } from 'class-validator';
 import { PASSWORD_MIN_LENGTH, RegisterDto } from './register.dto';
 import { UpdateUserDto } from '../../users/dtos/update-user.dto';
 import { UserRole } from '../../prisma/enums/user-role.enum';
@@ -15,7 +12,10 @@ function collect(errors: readonly ValidationError[]): string[] {
   ]);
 }
 
-function errorsFor<T extends object>(cls: new () => T, payload: unknown): string[] {
+function errorsFor<T extends object>(
+  cls: new () => T,
+  payload: unknown,
+): string[] {
   return collect(
     validateSync(plainToInstance(cls, payload) as object, {
       whitelist: true,
@@ -55,19 +55,21 @@ describe('RegisterDto', () => {
   });
 
   it('rejeita CPF com dígito verificador inválido', () => {
-    expect(errorsFor(RegisterDto, { ...base, cpf: '529.982.247-26' }).join(' ')).toContain(
-      'CPF inválido',
-    );
+    expect(
+      errorsFor(RegisterDto, { ...base, cpf: '529.982.247-26' }).join(' '),
+    ).toContain('CPF inválido');
   });
 
   it('rejeita CNPJ com dígito verificador inválido', () => {
-    expect(errorsFor(RegisterDto, { ...base, cnpj: '11.222.333/0001-82' }).join(' ')).toContain(
-      'CNPJ inválido',
-    );
+    expect(
+      errorsFor(RegisterDto, { ...base, cnpj: '11.222.333/0001-82' }).join(' '),
+    ).toContain('CNPJ inválido');
   });
 
   it('rejeita e-mail malformado', () => {
-    expect(errorsFor(RegisterDto, { ...base, email: 'maria@' }).length).toBeGreaterThan(0);
+    expect(
+      errorsFor(RegisterDto, { ...base, email: 'maria@' }).length,
+    ).toBeGreaterThan(0);
   });
 
   it('exige nome', () => {
@@ -78,13 +80,15 @@ describe('RegisterDto', () => {
 
   it('exige senha mínima com mensagem compreensível', () => {
     const curta = 'a'.repeat(PASSWORD_MIN_LENGTH - 1);
-    expect(errorsFor(RegisterDto, { ...base, password: curta }).join(' ')).toContain(
-      `Senha deve ter pelo menos ${PASSWORD_MIN_LENGTH} caracteres`,
-    );
+    expect(
+      errorsFor(RegisterDto, { ...base, password: curta }).join(' '),
+    ).toContain(`Senha deve ter pelo menos ${PASSWORD_MIN_LENGTH} caracteres`);
   });
 
   it('exige código de acesso com tamanho mínimo', () => {
-    expect(errorsFor(RegisterDto, { ...base, accessCode: 'AB' }).length).toBeGreaterThan(0);
+    expect(
+      errorsFor(RegisterDto, { ...base, accessCode: 'AB' }).length,
+    ).toBeGreaterThan(0);
     expect(errorsFor(RegisterDto, { ...base, accessCode: 'ABCD' })).toEqual([]);
   });
 
@@ -95,7 +99,9 @@ describe('RegisterDto', () => {
   });
 
   it('rejeita campo inesperado em vez de ignorá-lo', () => {
-    expect(errorsFor(RegisterDto, { ...base, isAdmin: true }).length).toBeGreaterThan(0);
+    expect(
+      errorsFor(RegisterDto, { ...base, isAdmin: true }).length,
+    ).toBeGreaterThan(0);
   });
 });
 
@@ -105,15 +111,15 @@ describe('UpdateUserDto', () => {
   });
 
   it('rejeita CPF inválido na atualização', () => {
-    expect(errorsFor(UpdateUserDto, { cpf: '529.982.247-26' }).join(' ')).toContain(
-      'CPF inválido',
-    );
+    expect(
+      errorsFor(UpdateUserDto, { cpf: '529.982.247-26' }).join(' '),
+    ).toContain('CPF inválido');
   });
 
   it('rejeita CNPJ inválido na atualização', () => {
-    expect(errorsFor(UpdateUserDto, { cnpj: '11222333000182' }).join(' ')).toContain(
-      'CNPJ inválido',
-    );
+    expect(
+      errorsFor(UpdateUserDto, { cnpj: '11222333000182' }).join(' '),
+    ).toContain('CNPJ inválido');
   });
 
   it('normaliza documentos enviados com máscara', () => {
@@ -129,6 +135,8 @@ describe('UpdateUserDto', () => {
   });
 
   it('rejeita senha abaixo do mínimo', () => {
-    expect(errorsFor(UpdateUserDto, { password: '123' }).length).toBeGreaterThan(0);
+    expect(
+      errorsFor(UpdateUserDto, { password: '123' }).length,
+    ).toBeGreaterThan(0);
   });
 });

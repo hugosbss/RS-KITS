@@ -109,13 +109,15 @@ export type DocumentCollision = {
   userIds: string[];
 };
 
-export function findDocumentCollisions(rows: Array<{
-  id: string;
-  email?: string | null;
-  cpf?: string | null;
-  cnpj?: string | null;
-  accessCode?: string | null;
-}>): DocumentCollision[] {
+export function findDocumentCollisions(
+  rows: Array<{
+    id: string;
+    email?: string | null;
+    cpf?: string | null;
+    cnpj?: string | null;
+    accessCode?: string | null;
+  }>,
+): DocumentCollision[] {
   const collisions: DocumentCollision[] = [];
   const fields: Array<'email' | 'cpf' | 'cnpj' | 'accessCode'> = [
     'email',

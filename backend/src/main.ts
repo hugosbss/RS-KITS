@@ -1,3 +1,4 @@
+import type { Request, Response, NextFunction } from 'express';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
@@ -28,7 +29,7 @@ async function bootstrap() {
   if (frontendDir && existsSync(frontendDir)) {
     app.useStaticAssets(frontendDir);
     const indexPath = join(frontendDir, 'index.html');
-    app.use((req: any, res: any, next: any) => {
+    app.use((req: Request, res: Response, next: NextFunction) => {
       if (
         req.method === 'GET' &&
         !req.path.startsWith('/api/') &&
