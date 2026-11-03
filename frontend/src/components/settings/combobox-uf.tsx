@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Search } from "lucide-react";
-import { BR_STATES } from "./types";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Search } from 'lucide-react';
+import { BR_STATES } from './types';
 
 export function UfCombobox({
   value,
@@ -11,7 +11,7 @@ export function UfCombobox({
   value: string;
   onChange: (uf: string) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
@@ -28,8 +28,8 @@ export function UfCombobox({
         setOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, []);
 
   return (
@@ -39,7 +39,7 @@ export function UfCombobox({
         <input
           value={value || query}
           onChange={(e) => {
-            onChange("");
+            onChange('');
             setQuery(e.target.value.toUpperCase().slice(0, 2));
             setOpen(true);
           }}
@@ -51,7 +51,9 @@ export function UfCombobox({
       {open && (
         <div className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
           {filtered.length === 0 && (
-            <p className="px-3 py-2 text-sm text-slate-400">Nenhum estado encontrado.</p>
+            <p className="px-3 py-2 text-sm text-slate-400">
+              Nenhum estado encontrado.
+            </p>
           )}
           {filtered.map((state) => (
             <button
@@ -59,13 +61,13 @@ export function UfCombobox({
               type="button"
               onClick={() => {
                 onChange(state);
-                setQuery("");
+                setQuery('');
                 setOpen(false);
               }}
               className={`block w-full rounded-lg px-3 py-2 text-left text-sm transition ${
                 state === value
-                  ? "bg-blue-50 font-semibold text-blue-700"
-                  : "text-slate-700 hover:bg-slate-50"
+                  ? 'bg-blue-50 font-semibold text-blue-700'
+                  : 'text-slate-700 hover:bg-slate-50'
               }`}
             >
               {state}
