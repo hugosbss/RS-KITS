@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
   existsSync,
   mkdirSync,
@@ -81,7 +77,9 @@ export class AuditService implements OnModuleInit {
    * Grava uma linha JSON no arquivo de log.
    * Se o usuário informado não tiver nome, resolve o nome no banco pelo id.
    */
-  async register(entry: Omit<AuditEntry, 'id' | 'timestamp'>): Promise<AuditEntry> {
+  async register(
+    entry: Omit<AuditEntry, 'id' | 'timestamp'>,
+  ): Promise<AuditEntry> {
     this.rotateIfNeeded();
 
     let usuario = entry.usuario ?? null;
@@ -99,7 +97,9 @@ export class AuditService implements OnModuleInit {
     }
 
     const line: AuditEntry = {
-      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      id: crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       timestamp: this.now(),
       ...entry,
       usuario,
@@ -108,7 +108,9 @@ export class AuditService implements OnModuleInit {
     try {
       appendFileSync(this.logFile, `${JSON.stringify(line)}\n`, 'utf8');
     } catch (err) {
-      this.logger.error(`Falha ao escrever no log de auditoria: ${String(err)}`);
+      this.logger.error(
+        `Falha ao escrever no log de auditoria: ${String(err)}`,
+      );
     }
     return line;
   }

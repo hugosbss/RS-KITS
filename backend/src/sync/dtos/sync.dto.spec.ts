@@ -82,16 +82,19 @@ describe('SyncPushDto', () => {
 
   it('rejeita opType desconhecido', () => {
     expect(
-      errorsFor(SyncPushDto, validPush([validOperation({ opType: 'DROP' as never })]))
-        .join(' '),
+      errorsFor(
+        SyncPushDto,
+        validPush([validOperation({ opType: 'DROP' as never })]),
+      ).join(' '),
     ).toContain('opType inválido');
   });
 
   it('exige operationId para garantir idempotência', () => {
     expect(
-      errorsFor(SyncPushDto, validPush([validOperation({ operationId: '' })])).join(
-        ' ',
-      ),
+      errorsFor(
+        SyncPushDto,
+        validPush([validOperation({ operationId: '' })]),
+      ).join(' '),
     ).toContain('operationId é obrigatório');
   });
 
@@ -106,16 +109,21 @@ describe('SyncPushDto', () => {
 
   it('rejeita baseVersion negativa ou fracionária', () => {
     expect(
-      errorsFor(SyncPushDto, validPush([validOperation({ baseVersion: -1 })])).length,
+      errorsFor(SyncPushDto, validPush([validOperation({ baseVersion: -1 })]))
+        .length,
     ).toBeGreaterThan(0);
     expect(
-      errorsFor(SyncPushDto, validPush([validOperation({ baseVersion: 1.5 })])).length,
+      errorsFor(SyncPushDto, validPush([validOperation({ baseVersion: 1.5 })]))
+        .length,
     ).toBeGreaterThan(0);
   });
 
   it('aceita baseVersion nulo para criação de registro novo', () => {
     expect(
-      errorsFor(SyncPushDto, validPush([validOperation({ baseVersion: null })])),
+      errorsFor(
+        SyncPushDto,
+        validPush([validOperation({ baseVersion: null })]),
+      ),
     ).toEqual([]);
   });
 
@@ -124,7 +132,9 @@ describe('SyncPushDto', () => {
       validOperation({ operationId: 'op-ok' }),
       validOperation({ operationId: 'op-ruim', entityType: 'X' as never }),
     ]);
-    expect(errorsFor(SyncPushDto, batch).join(' ')).toContain('entityType inválido');
+    expect(errorsFor(SyncPushDto, batch).join(' ')).toContain(
+      'entityType inválido',
+    );
   });
 
   it('rejeita campo desconhecido dentro da operação', () => {

@@ -71,13 +71,13 @@ export class SyncService {
     const results: OperationResult[] = [];
     for (const operation of payload.operations) {
       try {
-        results.push(await this.applyOperation(operation, payload.deviceId, currentUser));
+        results.push(
+          await this.applyOperation(operation, payload.deviceId, currentUser),
+        );
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Falha ao aplicar operação';
-        this.logger.warn(
-          `sync push ${operation.operationId}: ${message}`,
-        );
+        this.logger.warn(`sync push ${operation.operationId}: ${message}`);
         results.push({
           operationId: operation.operationId,
           status: 'REJECTED',
@@ -89,7 +89,8 @@ export class SyncService {
     return {
       results,
       applied: results.filter((r) => r.status === 'APPLIED').length,
-      alreadyApplied: results.filter((r) => r.status === 'ALREADY_APPLIED').length,
+      alreadyApplied: results.filter((r) => r.status === 'ALREADY_APPLIED')
+        .length,
       conflicts: results.filter((r) => r.status === 'CONFLICT').length,
       rejected: results.filter((r) => r.status === 'REJECTED').length,
       serverTime: new Date().toISOString(),
@@ -168,7 +169,14 @@ export class SyncService {
       // Criação (ou recriação) de atleta.
       if (!current) {
         if (operation.opType === 'DELETE') {
-          await this.markOperation(tx, operation, deviceId, currentUser, 'REJECTED', 'Atleta inexistente');
+          await this.markOperation(
+            tx,
+            operation,
+            deviceId,
+            currentUser,
+            'REJECTED',
+            'Atleta inexistente',
+          );
           return {
             operationId: operation.operationId,
             status: 'REJECTED' as const,
@@ -186,7 +194,13 @@ export class SyncService {
             version: 1,
           },
         });
-        await this.markOperation(tx, operation, deviceId, currentUser, 'APPLIED');
+        await this.markOperation(
+          tx,
+          operation,
+          deviceId,
+          currentUser,
+          'APPLIED',
+        );
         await this.writeChange(tx, {
           eventId,
           entityType: 'ATHLETE',
@@ -288,7 +302,14 @@ export class SyncService {
         where: { id: operation.entityId },
       });
       if (!current) {
-        await this.markOperation(tx, operation, deviceId, currentUser, 'REJECTED', 'Evento inexistente');
+        await this.markOperation(
+          tx,
+          operation,
+          deviceId,
+          currentUser,
+          'REJECTED',
+          'Evento inexistente',
+        );
         return {
           operationId: operation.operationId,
           status: 'REJECTED' as const,
@@ -314,7 +335,13 @@ export class SyncService {
             status: 'OPEN',
           },
         });
-        await this.markOperation(tx, operation, deviceId, currentUser, 'CONFLICT');
+        await this.markOperation(
+          tx,
+          operation,
+          deviceId,
+          currentUser,
+          'CONFLICT',
+        );
         return {
           operationId: operation.operationId,
           status: 'CONFLICT' as const,
@@ -382,10 +409,19 @@ export class SyncService {
     await this.audit.register({
       usuario: { id: currentUser.id, nome: '', papel: currentUser.role },
       acao,
-      entidade: typeof operation.payload.entidade === 'string' ? operation.payload.entidade : 'ATLETA',
+      entidade:
+        typeof operation.payload.entidade === 'string'
+          ? operation.payload.entidade
+          : 'ATLETA',
       entidadeId: operation.entityId,
-      evento: typeof operation.payload.evento === 'string' ? operation.payload.evento : undefined,
-      campo: typeof operation.payload.campo === 'string' ? operation.payload.campo : undefined,
+      evento:
+        typeof operation.payload.evento === 'string'
+          ? operation.payload.evento
+          : undefined,
+      campo:
+        typeof operation.payload.campo === 'string'
+          ? operation.payload.campo
+          : undefined,
       de: operation.payload.de ?? null,
       para: operation.payload.para ?? null,
       detalhe,
@@ -493,10 +529,7 @@ export class SyncService {
    * auditoria. KEEP_LOCAL reaplica o payload local sobre o central;
    * KEEP_CENTRAL apenas encerra o conflito (o desktop adota o central).
    */
-  async resolveConflict(
-    dto: SyncConflictResolveDto,
-    currentUser: CurrentUser,
-  ) {
+  async resolveConflict(dto: SyncConflictResolveDto, currentUser: CurrentUser) {
     if (
       currentUser.role !== UserRole.ADMIN &&
       currentUser.role !== UserRole.ORGANIZADOR
@@ -697,15 +730,47 @@ export class SyncService {
     payload: Record<string, unknown>,
   ): Prisma.AthleteUncheckedUpdateInput {
     const allowed = [
-      'num', 'nomeAtleta', 'kit', 'distancia', 'fxEtaria', 'categEspecial',
-      'nascto', 'sexo', 'equipe', 'cidadeUf', 'camiseta', 'cpfAtleta', 'cel',
-      'email', 'quemVaiRetirar', 'notas', 'obs1', 'obs2', 'alerta', 'nomeEvento',
-      'contato', 'grauParentesco', 'celularContato', 'pin', 'itensAdicionais',
-      'convenioMedico', 'tipoSanguineo', 'contatoEmergencia', 'relacaoAtleta',
+      'num',
+      'nomeAtleta',
+      'kit',
+      'distancia',
+      'fxEtaria',
+      'categEspecial',
+      'nascto',
+      'sexo',
+      'equipe',
+      'cidadeUf',
+      'camiseta',
+      'cpfAtleta',
+      'cel',
+      'email',
+      'quemVaiRetirar',
+      'notas',
+      'obs1',
+      'obs2',
+      'alerta',
+      'nomeEvento',
+      'contato',
+      'grauParentesco',
+      'celularContato',
+      'pin',
+      'itensAdicionais',
+      'convenioMedico',
+      'tipoSanguineo',
+      'contatoEmergencia',
+      'relacaoAtleta',
       'telefoneEmergencia',
-      'statusEntrega', 'dataEntrega', 'usuarioEntrega', 'obsEntrega',
-      'dataEstorno', 'usuarioEstorno', 'nomeEntrega', 'cpfEntrega',
-      'foneEntrega', 'emailEntrega', 'terceiro',
+      'statusEntrega',
+      'dataEntrega',
+      'usuarioEntrega',
+      'obsEntrega',
+      'dataEstorno',
+      'usuarioEstorno',
+      'nomeEntrega',
+      'cpfEntrega',
+      'foneEntrega',
+      'emailEntrega',
+      'terceiro',
     ];
     const out: Record<string, unknown> = {};
     for (const key of allowed) {
@@ -755,7 +820,9 @@ export class SyncService {
     if (a === null && b === undefined) return true;
     if (a === undefined && b === null) return true;
     if (a instanceof Date || b instanceof Date) {
-      return new Date(a as string).getTime() === new Date(b as string).getTime();
+      return (
+        new Date(a as string).getTime() === new Date(b as string).getTime()
+      );
     }
     return false;
   }

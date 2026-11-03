@@ -1,5 +1,6 @@
-import { RequireAuth } from "@/components/providers/require-auth";
-import { ReportShell } from "@/components/reports/reports";
+import type { Metadata } from 'next';
+import { RequireAuth } from '@/components/providers/require-auth';
+import { ReportShell } from '@/components/reports/reports';
 
 export default function ReportsPage() {
   return (
@@ -8,3 +9,5 @@ export default function ReportsPage() {
     </RequireAuth>
   );
 }
+
+export const metadata: Metadata = { title: 'Relatorios' };

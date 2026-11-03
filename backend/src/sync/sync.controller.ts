@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { AuthenticatedRequest } from '../common/types/authenticated-request';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { SyncService } from './sync.service';
 import {
   SyncConflictResolveDto,
@@ -27,35 +37,44 @@ export class SyncController {
   @Post('push')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR, UserRole.OPERATOR)
-  push(@Body() dto: SyncPushDto, @Req() req: any) {
+  push(@Body() dto: SyncPushDto, @Req() req: AuthenticatedRequest) {
     return this.syncService.push(dto, req.user);
   }
 
   @Get('pull')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR, UserRole.OPERATOR)
-  pull(@Query() query: SyncPullQueryDto, @Req() req: any) {
+  pull(@Query() query: SyncPullQueryDto, @Req() req: AuthenticatedRequest) {
     return this.syncService.pull(query, req.user);
   }
 
   @Get('conflicts')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR, UserRole.OPERATOR)
-  conflicts(@Query() query: SyncStatusQueryDto, @Req() req: any) {
+  conflicts(
+    @Query() query: SyncStatusQueryDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.syncService.listConflicts(query.eventId, req.user);
   }
 
   @Post('conflicts/resolve')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR)
-  resolve(@Body() dto: SyncConflictResolveDto, @Req() req: any) {
+  resolve(
+    @Body() dto: SyncConflictResolveDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.syncService.resolveConflict(dto, req.user);
   }
 
   @Get('operations/:operationId')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR, UserRole.OPERATOR)
-  operation(@Param('operationId') operationId: string, @Req() req: any) {
+  operation(
+    @Param('operationId') operationId: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.syncService.describeOperation(operationId, req.user);
   }
 }
