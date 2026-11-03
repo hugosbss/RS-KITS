@@ -32,7 +32,7 @@ if errorlevel 1 exit /b 1
 echo ==^> 3. build estatico do Next.js =^> frontend\out
 pushd ..\frontend
 set "NEXT_DESKTOP=1"
-set "NEXT_PUBLIC_API_URL=http://127.0.0.1:19090/api"
+set "NEXT_PUBLIC_API_URL=/api"
 call npm run build
 if errorlevel 1 exit /b 1
 popd
@@ -55,6 +55,8 @@ if not exist "dist\RS-KITS.exe" (
 
 mkdir release\windows 2>nul
 copy /y "dist\RS-KITS.exe" "release\windows\RS-KITS-%VERSION%.exe" >nul
+python -c "import json; from pathlib import Path; Path(r'release\windows\RS-KITS-%VERSION%.exe.json').write_text(json.dumps({'embeddedDataVersion': 1, 'eventIsolationVersion': 1}), encoding='utf-8')"
+if errorlevel 1 exit /b 1
 
 echo ==^> 6. Instalador (Inno Setup 6, se iscc estiver no PATH)
 

@@ -40,10 +40,10 @@ DB_FIELD = {
     "alerta": "alerta",
     "nomeEvento": "nome_evento",
     "pin": "pin",
-    "contato": "contato_emergencia",
-    "grauParentesco": "relacao_atleta",
-    "celularContato": "telefone_emergencia",
-    "itensAdicionais": None,
+    "contato": "contato",
+    "grauParentesco": "grau_parentesco",
+    "celularContato": "celular_contato",
+    "itensAdicionais": "itens_adicionais",
     "statusEntrega": "status",
     "dataEntrega": "data_entrega",
     "usuarioEntrega": "usuario_entrega",
@@ -55,6 +55,11 @@ DB_FIELD = {
     "foneEntrega": "fone_entrega",
     "emailEntrega": "email_entrega",
     "terceiro": "terceiro",
+    "convenioMedico": "convenio_medico",
+    "tipoSanguineo": "tipo_sanguineo",
+    "contatoEmergencia": "contato_emergencia",
+    "relacaoAtleta": "relacao_atleta",
+    "telefoneEmergencia": "telefone_emergencia",
 }
 
 DB_ATHLETE_KEYS = [k for k in DB_FIELD.values() if k]
@@ -74,8 +79,6 @@ def json_to_db_athlete(row: dict) -> dict:
         if camel == "terceiro":
             value = 1 if value else 0
         out[snake] = value if value is not None else ""
-    if row.get("obsEntrega"):
-        out["notas"] = (out.get("notas") or "") + (f" | Obs entrega: {row['obsEntrega']}" if out.get("notas") else row["obsEntrega"])
     out["id"] = row.get("id") or new_id()
     return {k: v for k, v in out.items() if k in database.ATHLETE_COLUMNS}
 
