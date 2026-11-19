@@ -13,7 +13,7 @@ Sistema de gestão de eventos esportivos, cadastro de atletas e entrega de kits.
 - [Permissões](#permissões)
 - [Relatórios e formatos exportados](#relatórios-e-formatos-exportados)
 - [Qualidade e testes](#qualidade-e-testes)
-- [Documentos complementares](#documentos-complementares)
+- [Documentação complementar](#documentação-complementar)
 
 ## Stack e arquitetura
 
@@ -41,9 +41,10 @@ O projeto usa npm workspaces para instalar e executar frontend e backend a parti
 frontend/                 Aplicação Next.js e componentes React
 backend/                  API NestJS, Prisma, migrações e seed
 desktop/                  Aplicativo Python, API FastAPI, SQLite e builds
-desktop/DOWNLOADS.md      Publicação e isolamento dos executáveis de evento
-SETUP.md                  Notas adicionais de configuração
-TESTING.md                Convenções e detalhes da cobertura do frontend
+docs/                     Documentação do projeto organizada por área
+docs/frontend/            Fluxos e testes do frontend
+docs/backend/             Modelo de dados e migrações
+docs/desktop/             Operação e distribuição do aplicativo desktop
 ```
 
 ## Executar o projeto web
@@ -91,7 +92,8 @@ Endereços locais:
 
 - Frontend: [http://localhost:3000](http://localhost:3000)
 - API: [http://localhost:3001/api](http://localhost:3001/api)
-- Swagger: [http://localhost:3001/docs](http://localhost:3001/docs)
+
+O backend atual não configura interface Swagger/OpenAPI.
 
 O seed cria a conta inicial `admin@rskits.com` com senha `admin123`. Essas credenciais são para desenvolvimento inicial; configure credenciais próprias antes de compartilhar ou publicar um ambiente.
 
@@ -157,7 +159,7 @@ Na distribuição de evento, a API web incorpora ao executável um snapshot do e
 
 O snapshot representa os dados no momento em que o executável foi preparado. Entregas, estornos e edições feitos depois ficam no SQLite daquela instalação. Copiar somente o `.exe` para outro computador não transfere essas alterações locais; faça backup ou transfira o perfil operacional conforme o processo da equipe. Novas alterações feitas no sistema web exigem preparar e distribuir outro executável para atualizar o snapshot inicial.
 
-Os executáveis de evento são isolados por ID do evento. A aplicação valida a identidade do banco local e bloqueia o uso de outro evento no mesmo perfil. A sincronização central das alterações feitas em uma distribuição de evento ainda não está implementada: o desktop preserva os dados localmente e informa que a sincronização não está disponível.
+Os executáveis de evento são isolados por ID do evento. A aplicação valida a identidade do banco local e bloqueia o uso de outro evento no mesmo perfil. Nessa distribuição, as operações de sincronização retornam `unsupported`; as alterações permanecem no banco local. O perfil desktop limpo tem um protótipo separado que, se o operador iniciar `desktop/cloud.py` à parte, pode enviar registros de auditoria para esse serviço demonstrativo. Ele não é o backend NestJS, não sincroniza os cadastros de atletas e não aplica ao SQLite os dados retornados no pull.
 
 O aplicativo limpo pode criar seus próprios eventos e usuários localmente. Uma distribuição vinculada a um evento opera somente aquele evento e não deve ser usada para criar, excluir ou trocar o evento embarcado.
 
@@ -185,11 +187,11 @@ Disponível para administradores. Primeiro selecione o evento; depois baixe o mo
 
 A validação exige nome e pelo menos NUM ou CPF, e verifica duplicidades de NUM/CPF dentro da planilha. Se o mesmo atleta já existir no evento atual, ele é identificado e ignorado; a tela informa quantos registros eram existentes e quantos novos foram importados. A validação de CPF não rejeita o número apenas por ter dígitos repetidos.
 
-A tela também oferece a geração de um backup JSON do estado local de atletas exibido pelo aplicativo.
+A tela exibe um botão rotulado como backup do banco, mas sua implementação exporta apenas a prévia da planilha atualmente carregada (ou uma lista vazia), junto com metadados fixos/de demonstração. O arquivo JSON não é um backup do banco local nem inclui os atletas já cadastrados, entregas e auditoria reais.
 
 ### `/delivery` — Entrega de kits
 
-É a tela de operação diária do evento selecionado. A busca procura por nome, número, CPF, cidade/UF ou equipe. A tabela tem rolagem e mostra NUM, nome, sexo, nascimento, cidade/UF, equipe, modalidade, kit, camiseta e status. Ela permite abrir a ficha, editar os campos disponíveis, confirmar uma entrega, estornar uma entrega ou espelhar o atleta na segunda tela. Linhas entregues aparecem em verde; linhas estornadas aparecem em amarelo. Os filtros de status permitem ver entregues ou pendentes; para ver estornados, mantenha o filtro em Todos.
+É a tela de operação diária do evento selecionado. A busca procura por nome, número, CPF, cidade/UF ou equipe. A tabela tem rolagem e mostra NUM, nome, sexo, nascimento, cidade/UF, equipe, modalidade, kit, camiseta e status. Ela permite abrir a ficha, editar os campos disponíveis, confirmar uma entrega, estornar uma entrega ou espelhar o atleta na segunda tela. Linhas entregues aparecem em verde; linhas estornadas aparecem em amarelo. Os filtros diretos permitem ver entregues ou pendentes; para ver estornados, mantenha o filtro em Todos. O painel mostra total, entregues e pendentes, sem contador próprio de estornados.
 
 **Para entregar um kit:** selecione a linha do atleta para abrir a ficha. Confira os dados, escolha retirada pelo próprio atleta ou por terceiro e confirme a entrega. Para um terceiro, informe os dados de quem está retirando. O sistema grava data/hora, usuário operador e dados do recebedor. O atalho de entrega na tabela registra a retirada pelo próprio atleta.
 
@@ -197,7 +199,7 @@ A tela também oferece a geração de um backup JSON do estado local de atletas 
 
 **Para zerar as entregas:** abra `Utilitários` → `Zerar Entregas`, digite `ZERAR ENTREGAS` para confirmar e execute. A operação limpa o status e os campos de entrega/estorno de todos os atletas do evento. Ela não apaga o evento, os atletas ou os campos cadastrais editados.
 
-**Para sortear um atleta:** abra `Utilitários` → `Realizar Sorteio`. Escolha Todos ou os filtros disponíveis de modalidade/categoria, faixa etária e cidade; então execute o sorteio. O vencedor é exibido na janela e a ação é registrada na auditoria quando a API está autenticada.
+**Para sortear um atleta:** abra `Utilitários` → `Realizar Sorteio`. O modal oferece filtros com opções pré-definidas. O primeiro aparece como modalidade/categoria, mas filtra distância/modalidade; faixa etária e cidade também usam opções fixas no código, não carregadas do evento. Sem filtros, o sorteio considera todos os atletas. O vencedor é exibido na janela e a ação é registrada na auditoria quando a API está autenticada.
 
 **Para exibir uma segunda tela:** em `Utilitários`, abra `Abrir Segunda Tela` e selecione transmissão manual ou automática. Na tabela, use `Espelhar` para escolher o atleta. A segunda tela mostra a ficha resumida para conferência com o operador; no modo automático ela acompanha a seleção feita na tela principal. No desktop, a segunda tela abre em outra janela PyWebView; no navegador, abre em outra aba/janela.
 
@@ -205,17 +207,17 @@ A edição disponível pela tabela altera nome, CPF, modalidade, faixa etária, 
 
 ### `/delivery/second-screen` — Segunda tela
 
-Mostra somente as informações do atleta selecionado para que o atleta e o operador confiram os dados. A tela é atualizada a partir da tela principal e não registra entregas por conta própria.
+Mostra os dados do atleta selecionado para conferência e não registra entregas por conta própria. Além de inscrição, categoria, equipe e camiseta, a implementação atual exibe dados de saúde/emergência: convênio, tipo sanguíneo, contato e telefone de emergência e relação com o contato.
 
 ### `/reports` — Relatórios e auditoria
 
-Os relatórios são do evento selecionado. A aba de auditoria mostra alterações recentes com data/hora, usuário, atleta, campo, valor anterior e valor novo. As outras opções permitem exportar dados completos, gerar um modelo com atletas alterados, importar atualizações e montar uma relação de entrega com colunas escolhidas.
+Os dados exportados são do evento selecionado. A tela oferece exportação de Dados Full, modelo de exportação, importação de atualizações CSV e relação de entrega com colunas escolhidas. A aba Analítico mantém alterações geradas pela importação de atualizações durante a sessão atual; ela não carrega o arquivo de auditoria central ao abrir a página.
 
-Para importar atualizações, use uma planilha CSV com NUM ou CPF para localizar o atleta. Campos preenchidos substituem os valores existentes; registros não localizados são contabilizados no resultado da importação.
+A importação de atualizações aceita CSV com NUM ou CPF e mostra um resumo das diferenças. Na rota atual, o componente não recebe uma ação de persistência: as mudanças ficam apenas no estado em memória da página e não são salvas nos cadastros. O modelo de exportação considera somente atletas marcados como alterados nessa sessão, não um histórico completo do sistema.
 
 ### `/filters` — Análises por dimensão
 
-Apresenta gráficos, totais e tabelas agregadas para modalidade/distância, equipe, cidade, camiseta, sexo, sexo e distância, faixas de idade e entregas por dia/hora/usuário. Os filtros disponíveis incluem sexo, modalidade, cidade, camiseta, idade e kit. A tela calcula as faixas etárias a partir da data de nascimento quando ela está disponível.
+Apresenta cartões de totais e tabelas agregadas e classificáveis para modalidade/distância, equipe, cidade, camiseta, sexo, sexo e distância, faixas de idade e entregas por dia/hora/usuário; não há gráficos de dados nessa tela atualmente. Os filtros disponíveis incluem sexo, modalidade, cidade, camiseta, idade e kit; não há filtro de data para entregas. A tela calcula as faixas “Até 20”, “21–30”, “31–40”, “41–50”, “51–60” e “Mais de 61 anos” a partir da data de nascimento; pela condição do código, a última inclui quem tem 61 anos ou mais. Não há configuração de intervalos de cinco anos.
 
 ### `/users` — Usuários
 
@@ -232,7 +234,7 @@ Para aparecer como versão compatível, o servidor precisa ter uma build Windows
 
 ### `/settings` — Configurações
 
-Central de atalhos para gestão de usuários, downloads e eventos. As ações de cadastro e vínculo são realizadas nas telas específicas; Configurações não mantém formulários independentes para esses dados. Operadores não têm acesso a essa página.
+Área autenticada para configurações e gestão do sistema. Os recursos disponíveis variam conforme o perfil; operadores não visualizam conteúdo nessa tela.
 
 ### `/` — Entrada
 
@@ -254,26 +256,26 @@ Os nomes das abas usam “Excel” por compatibilidade com o uso da planilha, ma
 
 | Relatório                                  | Conteúdo e saída atual                                                                                                                            |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Relatório Analítico / alterações agrupadas | Histórico de alterações com usuário, data/hora, campo, antes e depois; exportação CSV agrupada. A impressão do navegador pode ser salva como PDF. |
-| Excel - Modelo Exportação                  | CSV com os campos do modelo de exportação e somente atletas marcados como alterados.                                                              |
+| Relatório Analítico / alterações agrupadas | A tela mostra alterações geradas pela importação CSV na sessão atual; a exportação agrupada contém esses registros. O botão Imprimir abre a impressão do navegador, que pode ser salva como PDF. O histórico central não é carregado nessa página. |
+| Excel - Modelo Exportação                  | CSV com os campos do modelo e atletas marcados como alterados durante a sessão atual de importação; não é um inventário de todas as edições do sistema. |
 | Excel - Dados Full                         | CSV com dados cadastrais e de entrega/estorno de todos os atletas do evento.                                                                      |
 | Excel Modelo e Exportação                  | CSV configurável para exportar alterações; também aceita CSV de atualização dos atletas.                                                          |
 | Relação de Entrega                         | Escolha as colunas e gere um CSV para a operação de entrega.                                                                                      |
-| Relatórios da tela Filtros                 | Gráficos e totais agregados por dimensões do evento; não são a mesma exportação detalhada da aba de auditoria.                                    |
+| Relatórios da tela Filtros                 | Cartões de totais e tabelas agregadas por dimensões do evento; não são gráficos nem a mesma exportação detalhada da aba de auditoria.             |
 
 O CSV de Dados Full inclui `NUM`, Nome Atleta, KIT, Distância, Faixa Etária, Categoria Especial, Nascimento, Sexo, Equipe, Cidade/UF, Camiseta, CPF Atleta, Cel, E-mail, Retirar KIT, Notas, Obs1, Obs2, Alerta, Nome Evento, status de entrega, data e usuário de entrega, observação da entrega, data de estorno e usuário do estorno. O Modelo Exportação inclui Num, Nome atleta, Modalidade, Nascto., Sexo, Equipe, Cidade/UF, Camiseta, CPF Atleta, Cel e Notas.
 
-O CSV de auditoria agrupada traz timestamp, usuário, número e nome do atleta, campo alterado, valor anterior, valor novo e dispositivo. A Relação de Entrega permite selecionar os campos antes de exportar.
+O CSV da aba de alterações contém timestamp, usuário, número e nome do atleta, campo alterado, valor anterior, valor novo e dispositivo apenas para as diferenças carregadas pela importação CSV na sessão atual. A API central grava eventos em `logs/audit.log` e oferece `GET /api/audit`, mas a página de Relatórios não consulta esse endpoint. A importação CSV não salva alterações nos cadastros pela rota publicada. A Relação de Entrega permite selecionar os campos antes de exportar.
 
-O relatório chamado “Linhas/Amarelo” exporta atualmente um CSV de dados, sem cores de célula. CSV não armazena formatação amarela; a cor amarela é usada na tela de entrega para identificar atletas estornados.
+Há um ramo de exportação chamado “Linhas/Amarelo” no código, mas a tela atual não mostra um controle para acioná-lo. Se acionado internamente, gera um CSV com todos os atletas, sem destacar campos alterados. CSV não armazena formatação amarela; a cor amarela é usada na tela de entrega para identificar atletas estornados.
 
 ## Limites observados na auditoria
 
 - Na entrega, o formulário de edição cobre nome, CPF, modalidade, faixa etária, equipe, camiseta e cidade/UF; não altera todos os campos disponíveis no cadastro do atleta.
 - O reset em `Utilitários` zera dados de entrega e estorno, mas não reverte as edições cadastrais dos atletas.
 - A tela de entrega não tem uma ação funcional para renomear o evento. O componente de modal existente não está ligado a um controle visível nem persiste a mudança; para alterar o nome, use a edição do evento em `/events`.
-- O código contém um exportador CSV para “Linhas/Amarelo”, mas não há uma opção visível para acioná-lo na tela atual. A exportação não aplica cores de célula.
-- Organizadores não podem abrir ou baixar arquivos em `/downloads`; a tela Configurações ainda pode exibir um atalho para essa rota, que responderá com acesso restrito.
+- O código contém um exportador CSV para “Linhas/Amarelo”, mas não há uma opção visível para acioná-lo na tela atual. Ele exporta todos os atletas, não destaca campos alterados e não aplica cores de célula.
+- A rota `/downloads` e os endpoints de download exigem perfil ADMIN; a visibilidade de atalhos para essa rota depende da implementação da tela Configurações.
 
 ## Qualidade e testes
 
@@ -292,8 +294,12 @@ O frontend usa Vitest e Testing Library. A suíte cobre rotas, componentes e flu
 
 Esses comandos não geram a build Next.js nem o executável desktop. Para validar a janela nativa e os fluxos no Windows, abra a build resultante em uma máquina Windows.
 
-## Documentos complementares
+## Documentação complementar
 
-- [SETUP.md](SETUP.md): notas de configuração do ambiente de desenvolvimento.
-- [TESTING.md](TESTING.md): detalhes de cobertura e padrão para novos testes.
-- [desktop/DOWNLOADS.md](desktop/DOWNLOADS.md): publicação, personalização e isolamento dos dados dos executáveis.
+- [Índice da documentação](docs/README.md): organização dos documentos por área.
+- [Setup local](docs/project/setup.md): infraestrutura, variáveis de ambiente e execução.
+- [Banco de dados](docs/backend/database.md): entidades Prisma e migrações.
+- [Entrega de kits](docs/frontend/delivery.md): comportamento atual e requisitos pendentes.
+- [Testes](docs/frontend/testing.md): comandos e convenções por projeto.
+- [Desktop](docs/desktop/README.md): operação do aplicativo local.
+- [Downloads desktop](docs/desktop/downloads.md): publicação e isolamento dos perfis.

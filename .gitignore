@@ -82,3 +82,5 @@ desktop/**/*.db-*
 
 # instaladores servidos pelo backend (backend/downloads)
 backend/downloads/
+# Configuração local do Claude Code (não compartilhar preferências pessoais)
+**/.claude/settings.local.json
