@@ -133,6 +133,26 @@ describe('authenticated application pages', () => {
       }),
     );
   });
+  it('shows raffle errors in the interface and allows correcting the filters', () => {
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    mount(<DeliveryPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Utilitários' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Realizar Sorteio' }));
+    const category = screen.getAllByRole('combobox')[0];
+    fireEvent.change(category, { target: { value: '42 KM' } });
+    fireEvent.click(screen.getByRole('button', { name: 'SORTEAR AGORA' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Nenhum atleta encontrado com os filtros selecionados.',
+    );
+    expect(alert).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'SORTEAR AGORA' })).toBeEnabled();
+    expect(screen.queryByText('Ganhador do Sorteio!')).not.toBeInTheDocument();
+    expect(api.postAudit).not.toHaveBeenCalled();
+
+    fireEvent.change(category, { target: { value: '5 KM' } });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
   it('draws a winner from the chosen filters and records an audit', () => {
     vi.useFakeTimers();
     try {

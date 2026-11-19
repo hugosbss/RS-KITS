@@ -124,12 +124,14 @@ export function ReportShell({
     fieldsChanged: number;
   } | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [importError, setImportError] = useState('');
 
   // Mantém os relatórios sempre alinhados com os atletas reais do evento selecionado.
   useEffect(() => {
     setReportAthletes(realReportAthletes);
     setAuditLogs([]);
     setImportSummary(null);
+    setImportError('');
     setSubTabAlteracoes('ESTATICO');
   }, [realReportAthletes]);
 
@@ -191,6 +193,7 @@ export function ReportShell({
   const importAthleteUpdates = async (file: File) => {
     setIsImporting(true);
     setImportSummary(null);
+    setImportError('');
 
     try {
       const content = (await file.text()).replace(/^\uFEFF/, '');
@@ -315,13 +318,8 @@ export function ReportShell({
       });
       await onApplyAthleteUpdates?.(updates);
     } catch (error) {
-      setImportSummary({
-        updated: 0,
-        unchanged: 0,
-        notFound: 0,
-        fieldsChanged: 0,
-      });
-      window.alert(
+      setImportSummary(null);
+      setImportError(
         error instanceof Error
           ? error.message
           : 'Não foi possível importar a planilha.',
@@ -625,6 +623,7 @@ export function ReportShell({
             setUpdateModelHeaders={setUpdateModelHeaders}
             reportAthletes={reportAthletes}
             importSummary={importSummary}
+            importError={importError}
             isImporting={isImporting}
             exportUpdateModel={exportUpdateModel}
             importAthleteUpdates={importAthleteUpdates}

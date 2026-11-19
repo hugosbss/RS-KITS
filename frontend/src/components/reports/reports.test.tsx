@@ -114,9 +114,15 @@ describe('report workflows', () => {
       [expect.arrayContaining(['Ana Silva', 'Outra Equipe'].slice(0, 1))],
     );
   });
-  it.each(['NUM', 'Equipe\nNova equipe'])(
+  it.each([
+    ['NUM', 'A planilha precisa conter cabeçalho e ao menos uma atualização.'],
+    [
+      'Equipe\nNova equipe',
+      'Inclua a coluna NUM ou CPF Atleta para identificar cada atleta.',
+    ],
+  ])(
     'rejects malformed or unidentified update sheets (%s)',
-    async (content) => {
+    async (content, message) => {
       const alert = vi.spyOn(window, 'alert').mockImplementation(() => {});
       const apply = vi.fn();
       render(<ReportShell onApplyAthleteUpdates={apply} />);
@@ -124,9 +130,20 @@ describe('report workflows', () => {
         screen.getByRole('button', { name: 'Excel Modelo e Exportação' }),
       );
       upload(content);
-      await waitFor(() => expect(alert).toHaveBeenCalled());
+      expect(await screen.findByRole('alert')).toHaveTextContent(message);
+      expect(alert).not.toHaveBeenCalled();
       expect(apply).not.toHaveBeenCalled();
       expect(screen.queryByText('Importando...')).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Atletas atualizados:'),
+      ).not.toBeInTheDocument();
+
+      upload('NUM;Equipe\n101;Equipe Nova');
+      await waitFor(() => expect(apply).toHaveBeenCalledOnce());
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(
+        screen.getByText('Atletas atualizados:').parentElement,
+      ).toHaveTextContent('1');
     },
   );
   it('exports an empty event without leaking athletes from other events', () => {

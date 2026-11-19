@@ -24,6 +24,7 @@ interface ModeloAtualizacaoTabProps {
     notFound: number;
     fieldsChanged: number;
   } | null;
+  importError: string;
   isImporting: boolean;
   exportUpdateModel: () => void;
   importAthleteUpdates: (file: File) => Promise<void>;
@@ -41,6 +42,7 @@ export function ModeloAtualizacaoTab({
   setUpdateModelHeaders,
   reportAthletes,
   importSummary,
+  importError,
   isImporting,
   exportUpdateModel,
   importAthleteUpdates,
@@ -88,6 +90,15 @@ export function ModeloAtualizacaoTab({
             </Button>
           </div>
         </div>
+
+        {importError && (
+          <div
+            role="alert"
+            className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+          >
+            {importError}
+          </div>
+        )}
 
         {importSummary && (
           <div className="mt-4 grid gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs sm:grid-cols-4">

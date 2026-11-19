@@ -8,6 +8,7 @@ Esta página separa o comportamento encontrado na versão atual das solicitaçõ
 - Linhas entregues em verde e estornadas em amarelo. Os filtros diretos oferecem Entregues e Pendentes; para ver estornados, deixe o filtro em Todos.
 - Ficha do atleta, entrega pelo próprio atleta ou por terceiro, estorno, segunda tela e sorteio.
 - Sorteio com filtro opcional. O primeiro campo é rotulado Modalidade/Cat., mas filtra modalidade/distância. As opções atuais são fixas no código: modalidades 5KM, 10KM, 21KM e 42KM; faixas etárias 25–29, 30–34, 35–39, 40–44 e 50–54; cidades Bauru/SP, São Paulo/SP, Campinas/SP e Sorocaba/SP. Não são carregadas do evento.
+- Quando os filtros do sorteio não encontram atletas, o aviso aparece dentro do modal. A mensagem é limpa ao mudar os filtros, trocar o evento, abrir/fechar o modal ou tentar novamente.
 - Zerar entregas exige confirmação textual e limpa dados de entrega e estorno. Não remove o atleta nem desfaz suas edições cadastrais.
 - Edição direta pela tela de entrega cobre nome, CPF, modalidade, faixa etária, equipe, camiseta e cidade/UF.
 - O campo de equipe na edição atual é texto livre; a interface não apresenta seleção de equipes existentes nem cadastro de uma nova equipe.
@@ -42,6 +43,8 @@ Solicitações de operação ainda não cobertas integralmente:
 - Entregas agregadas por dia/hora e operador, com filtro por data.
 
 A implementação atual está descrita no [README principal](../../README.md#relatórios-e-formatos-exportados). O histórico central é gravado pela API, mas a tela de Relatórios não carrega GET /api/audit. A importação CSV dessa tela apenas altera o estado em memória do próprio relatório; a página não fornece a ação de persistência, então não atualiza os cadastros. A aba Analítico e o modelo de exportação mostram somente as alterações dessa sessão. As opções chamadas “Excel” geram CSV UTF-8 separado por ponto e vírgula. CSV não preserva cor de célula. O exportador “Linhas/Amarelo” não está exposto como opção na tela atual nem aplica destaque de cor.
+
+Falhas na importação de atualizações aparecem dentro da aba Excel Modelo e Exportação, sem resumo de sucesso. Uma nova tentativa limpa o erro anterior. Os avisos dessa importação e do sorteio usam a própria interface, evitando caixas nativas com o título “localhost diz”.
 
 A tela `/filters` atualmente apresenta cartões de totais e tabelas classificáveis; não desenha gráficos. A tabela de entregas agrupa registros por dia, hora e operador, sem filtro de data. O filtro global por faixa etária usa grupos fixos de dez anos; não oferece intervalos de cinco anos.
 

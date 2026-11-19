@@ -96,6 +96,7 @@ describe('delivery dialogs', () => {
       raffleFilterCity: 'TODOS',
       setRaffleFilterCity: vi.fn(),
       raffleWinner: null,
+      raffleError: '',
       isRaffling: false,
       handleRunRaffle: vi.fn(),
     };

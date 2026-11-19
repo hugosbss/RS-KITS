@@ -109,6 +109,17 @@ export function DeliveryShell() {
   const [raffleFilterCity, setRaffleFilterCity] = useState('TODOS');
   const [raffleWinner, setRaffleWinner] = useState<Athlete | null>(null);
   const [isRaffling, setIsRaffling] = useState(false);
+  const [raffleError, setRaffleError] = useState('');
+
+  useEffect(() => {
+    setRaffleError('');
+  }, [
+    selectedEvent?.id,
+    showRaffleModal,
+    raffleFilterCategory,
+    raffleFilterAge,
+    raffleFilterCity,
+  ]);
 
   // Modal de PIN = Localizar atleta
   const [showPinModal, setShowPinModal] = useState(false);
@@ -414,6 +425,7 @@ export function DeliveryShell() {
 
   // Realizar Sorteio
   const handleRunRaffle = () => {
+    setRaffleError('');
     setIsRaffling(true);
     setRaffleWinner(null);
 
@@ -430,7 +442,7 @@ export function DeliveryShell() {
 
     if (pool.length === 0) {
       setIsRaffling(false);
-      alert('Nenhum atleta encontrado com os filtros selecionados.');
+      setRaffleError('Nenhum atleta encontrado com os filtros selecionados.');
       return;
     }
 
@@ -568,6 +580,7 @@ export function DeliveryShell() {
         raffleFilterCity={raffleFilterCity}
         setRaffleFilterCity={setRaffleFilterCity}
         raffleWinner={raffleWinner}
+        raffleError={raffleError}
         isRaffling={isRaffling}
         handleRunRaffle={handleRunRaffle}
       />

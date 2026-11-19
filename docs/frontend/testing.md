@@ -17,6 +17,8 @@ Para aplicar formatação e correções automáticas disponíveis:
 
 O frontend usa Vitest, jsdom e Testing Library. npm run test:watch --workspace frontend inicia o modo interativo. npm run quality --workspace frontend executa formatação, lint, tipos e cobertura.
 
+O lint do frontend aplica a regra `no-alert`, que impede chamadas nativas a `alert`, `confirm` e `prompt`. Mensagens e confirmações devem usar os componentes da interface. Os testes de sorteio e importação de atualizações verificam a exibição dos erros na tela e a limpeza da mensagem ao corrigir filtros ou tentar novamente.
+
 A cobertura é gravada em frontend/coverage/ e não é versionada. A suíte inclui rotas e componentes, com cenários de autenticação, permissões, eventos, usuários, importação, entrega e estorno, segunda tela, relatórios e downloads. A checagem percorre telas e componentes `.tsx` em `src/app` e `src/components` (exceto arquivos de teste), exige cobertura de linhas de 80% por padrão para cada arquivo e mantém limites específicos menores para alguns componentes legados.
 
 ## Backend

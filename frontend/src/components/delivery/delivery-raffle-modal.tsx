@@ -14,6 +14,7 @@ interface DeliveryRaffleModalProps {
   raffleFilterCity: string;
   setRaffleFilterCity: React.Dispatch<React.SetStateAction<string>>;
   raffleWinner: Athlete | null;
+  raffleError: string;
   isRaffling: boolean;
   handleRunRaffle: () => void;
 }
@@ -28,6 +29,7 @@ export function DeliveryRaffleModal({
   raffleFilterCity,
   setRaffleFilterCity,
   raffleWinner,
+  raffleError,
   isRaffling,
   handleRunRaffle,
 }: DeliveryRaffleModalProps) {
@@ -108,6 +110,15 @@ export function DeliveryRaffleModal({
             </div>
           </div>
         </div>
+
+        {raffleError && (
+          <div
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+          >
+            {raffleError}
+          </div>
+        )}
 
         {raffleWinner && (
           <div className="rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 p-5 text-center text-white shadow-lg space-y-2 animate-bounce">

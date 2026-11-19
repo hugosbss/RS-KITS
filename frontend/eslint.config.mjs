@@ -24,6 +24,11 @@ const eslintConfig = [
     ],
   },
   ...compat.extends('next/core-web-vitals', 'next/typescript'),
+  {
+    rules: {
+      'no-alert': 'error',
+    },
+  },
   prettier,
 ];
 

@@ -98,6 +98,7 @@ describe('configurable report models', () => {
         fieldsChanged: 1,
       },
       isImporting: false,
+      importError: '',
       exportUpdateModel: vi.fn(),
       importAthleteUpdates: vi.fn().mockResolvedValue(undefined),
       toggleField: vi.fn(),
