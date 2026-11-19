@@ -76,7 +76,7 @@ def _static_dir() -> str:
 
 
 STATIC_DIR = _static_dir()
-RELEASE_DIR = os.environ.get("RSKITS_RELEASE_DIR") or os.path.join(RESOURCE_DIR, "release")
+RELEASE_DIR = os.environ.get("RSKITS_RELEASE_DIR") or os.path.join(HOME_DIR, "release")
 
 CLOUD_DATA_DIR = os.environ.get("RSKITS_CLOUD_DATA") or os.path.join(CACHE_DIR, "cloud")
 

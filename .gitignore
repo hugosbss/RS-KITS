@@ -7,12 +7,16 @@ node_modules/
 dist/
 build/
 .next/
+.next-dev/
 out/
 
 # Environment
 .env
 .env.local
 .env.*.local
+.env.*
+!.env.example
+!.env.*.example
 
 # Logs
 logs/
@@ -29,23 +33,17 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Prisma
-backend/prisma/migrations/**/migration_lock.toml
+# Prisma: versionar schema, migrations SQL e migration_lock.toml.
 
 # PWA
 frontend/public/sw.js
 frontend/public/workbox-*.js
+frontend/public/worker-*.js
 
 # Testing
 coverage/
 
-# Documentação: só entram os .md curtos de config/uso para quem vai usar.
-# Os demais (planos, anotações, manuais longos) ficam apenas locais.
-*.md
-*.MD
-!/README.md
-!/SETUP.md
-!/AGENTS.md
+# Documentação (.md), arquivos de exemplo e scripts de build são versionados.
 
 # Empacotamentos do desktop (win-unpacked, .zip, .exe, AppImage, deb)
 release/
@@ -53,7 +51,6 @@ release/
 # Desktop (venv, bancos de desenvolvimento, artefatos de build)
 desktop/.venv/
 desktop/sqlite/
-desktop/electron/
 desktop/cloud_data/
 desktop/prereqs/
 desktop/app.log
@@ -63,7 +60,27 @@ backend/web/
 *.tsbuildinfo
 __pycache__/
 *.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Dados locais do desktop e pacotes de eventos (podem conter dados pessoais)
+desktop/**/*.sqlite
+desktop/**/*.sqlite-*
+desktop/**/*.sqlite3
+desktop/**/*.sqlite3-*
+desktop/**/*.db
+desktop/**/*.db-*
+*.rksits
+*.rskits
+
+# Backups locais de edição
+*.orig
+*.bak
 
 # instaladores servidos pelo backend (backend/downloads)
 backend/downloads/
-
+# Configuração local do Claude Code (não compartilhar preferências pessoais)
+**/.claude/settings.local.json

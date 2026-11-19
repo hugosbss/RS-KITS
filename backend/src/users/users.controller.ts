@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import {
   Body,
   Controller,
@@ -6,6 +7,7 @@ import {
   Param,
   Patch,
   Req,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -21,12 +23,20 @@ export class UsersController {
   constructor(private usersService: UsersService) {}
 
   @Get()
-  findAll(@Req() req: any) {
-    return this.usersService.findAll(req.user);
+  findAll(
+    @Req() req: AuthenticatedRequest,
+    @Query('eventId') eventId?: string,
+  ) {
+    return this.usersService.findAll(req.user, eventId);
+  }
+
+  @Get('organizers')
+  listOrganizers(@Req() req: AuthenticatedRequest) {
+    return this.usersService.listOrganizers(req.user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Req() req: any) {
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.usersService.findOne(id, req.user);
   }
 
@@ -34,14 +44,14 @@ export class UsersController {
   update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.usersService.update(id, dto, req.user);
   }
 
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR)
-  remove(@Param('id') id: string, @Req() req: any) {
+  remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.usersService.remove(id, req.user);
   }
 }

@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import {
   Body,
   Controller,
@@ -31,38 +32,42 @@ export class EventsController {
   constructor(private eventsService: EventsService) {}
 
   @Get()
-  findAll(@Req() req: any) {
+  findAll(@Req() req: AuthenticatedRequest) {
     return this.eventsService.findAll(req.user);
   }
 
   @Post()
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
-  create(@Body() dto: CreateEventDto, @Req() req: any) {
+  create(@Body() dto: CreateEventDto, @Req() req: AuthenticatedRequest) {
     return this.eventsService.create(dto, req.user);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string, @Req() req: any) {
+  findOne(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.eventsService.findOne(id, req.user);
   }
 
   @Patch(':id')
   @Roles(UserRole.ADMIN)
-  update(@Param('id') id: string, @Body() dto: UpdateEventDto, @Req() req: any) {
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateEventDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
     return this.eventsService.update(id, dto, req.user);
   }
 
   @Delete(':id')
   @Roles(UserRole.ADMIN)
-  remove(@Param('id') id: string, @Req() req: any) {
+  remove(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.eventsService.remove(id, req.user);
   }
 
   // --- Vínculo Organizador <-> Evento ---
 
   @Get(':id/organizers')
-  listOrganizers(@Param('id') id: string, @Req() req: any) {
+  listOrganizers(@Param('id') id: string, @Req() req: AuthenticatedRequest) {
     return this.eventsService.listOrganizers(id, req.user);
   }
 
@@ -72,7 +77,7 @@ export class EventsController {
   addOrganizer(
     @Param('id') id: string,
     @Body() dto: AddOrganizerDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.eventsService.addOrganizer(id, dto, req.user);
   }
@@ -82,7 +87,7 @@ export class EventsController {
   removeOrganizer(
     @Param('id') id: string,
     @Param('userId') userId: string,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.eventsService.removeOrganizer(id, userId, req.user);
   }
@@ -93,7 +98,7 @@ export class EventsController {
   listAthletes(
     @Param('id') id: string,
     @Query() query: ListAthletesQueryDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.eventsService.listAthletes(id, query, req.user);
   }
@@ -103,7 +108,7 @@ export class EventsController {
   importAthletes(
     @Param('id') id: string,
     @Body() dto: ImportAthletesDto,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.eventsService.importAthletes(id, dto, req.user);
   }
@@ -113,7 +118,7 @@ export class EventsController {
     @Param('id') id: string,
     @Param('athleteId') athleteId: string,
     @Body() dto: Record<string, unknown>,
-    @Req() req: any,
+    @Req() req: AuthenticatedRequest,
   ) {
     return this.eventsService.updateAthlete(id, athleteId, dto, req.user);
   }

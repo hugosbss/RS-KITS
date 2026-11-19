@@ -31,6 +31,7 @@ class UserUpdate(BaseModel):
     email: str | None = None
     phone: str | None = None
     password: str | None = None
+    organizerId: str | None = None
 
 
 class EventUpdate(BaseModel):

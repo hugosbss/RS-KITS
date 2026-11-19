@@ -18,6 +18,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <QueryClientProvider client={queryClient}><AppStateProvider>{children}</AppStateProvider></QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppStateProvider>{children}</AppStateProvider>
+    </QueryClientProvider>
   );
 }

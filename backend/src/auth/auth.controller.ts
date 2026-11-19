@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import {
   Body,
   Controller,
@@ -22,7 +23,7 @@ export class AuthController {
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
-    return this.authService.login(dto.identifier, dto.password);
+    return this.authService.login(dto.identifier, dto.password, dto.deviceId);
   }
 
   // Criação de usuários protegida por JWT + roles.
@@ -31,7 +32,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.ORGANIZADOR)
   @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDto, @Req() req: any) {
+  register(@Body() dto: RegisterDto, @Req() req: AuthenticatedRequest) {
     return this.authService.register(dto, req.user);
   }
 }

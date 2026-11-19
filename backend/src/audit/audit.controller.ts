@@ -1,3 +1,4 @@
+import type { AuthenticatedRequest } from '../common/types/authenticated-request';
 import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { AuditService } from './audit.service';
 import { CreateAuditDto } from './dtos/create-audit.dto';
@@ -12,7 +13,7 @@ export class AuditController {
 
   // Ações que nascem no frontend (ex.: sorteio) são logadas através deste endpoint.
   @Post()
-  create(@Body() dto: CreateAuditDto, @Req() req: any) {
+  create(@Body() dto: CreateAuditDto, @Req() req: AuthenticatedRequest) {
     const user = req.user as { id: string; email?: string; role: UserRole };
     return this.auditService.register({
       usuario: { id: user.id, nome: '', papel: user.role },

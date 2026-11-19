@@ -36,7 +36,7 @@ mkdir -p build/assets
 "$PY" scripts/gen-icon.py --out build/assets
 
 echo "==> 3. build estático do Next.js => frontend/out"
-( cd ../frontend && NEXT_DESKTOP=1 NEXT_PUBLIC_API_URL=http://127.0.0.1:19090/api npm run build )
+( cd ../frontend && NEXT_DESKTOP=1 NEXT_PUBLIC_API_URL=/api npm run build )
 
 echo "==> 4. copiando frontend/out => build/static"
 rm -rf build/static

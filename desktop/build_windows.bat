@@ -1,7 +1,7 @@
 @echo off
 REM =============================================================================
 REM Build WINDOWS do RS KITS Desktop.
-REM DEVE ser executado EM UMA MÁQUINA WINDOWS (PyInstaller nao faz cross-compile;
+REM DEVE ser executado EM UMA MAQUINA WINDOWS (PyInstaller nao faz cross-compile;
 REM nao use WSL para gerar o executavel Windows).
 REM
 REM Pipeline:
@@ -32,7 +32,7 @@ if errorlevel 1 exit /b 1
 echo ==^> 3. build estatico do Next.js =^> frontend\out
 pushd ..\frontend
 set "NEXT_DESKTOP=1"
-set "NEXT_PUBLIC_API_URL=http://127.0.0.1:19090/api"
+set "NEXT_PUBLIC_API_URL=/api"
 call npm run build
 if errorlevel 1 exit /b 1
 popd
@@ -55,19 +55,54 @@ if not exist "dist\RS-KITS.exe" (
 
 mkdir release\windows 2>nul
 copy /y "dist\RS-KITS.exe" "release\windows\RS-KITS-%VERSION%.exe" >nul
+python -c "import json; from pathlib import Path; Path(r'release\windows\RS-KITS-%VERSION%.exe.json').write_text(json.dumps({'embeddedDataVersion': 1, 'eventIsolationVersion': 1}), encoding='utf-8')"
+if errorlevel 1 exit /b 1
 
 echo ==^> 6. Instalador (Inno Setup 6, se iscc estiver no PATH)
-where iscc >nul 2>nul
+
+where ISCC.exe >nul 2>nul
+if not errorlevel 1 goto INNO_FOUND
+
+rem ISCC nao esta no PATH: procura nas pastas padrao de instalacao do Inno Setup 6
+set "ISCC_EXE="
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if "%ISCC_EXE%"=="" if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if "%ISCC_EXE%"=="" if exist "%LocalAppData%\Programs\Inno Setup 6\ISCC.exe" set "ISCC_EXE=%LocalAppData%\Programs\Inno Setup 6\ISCC.exe"
+if "%ISCC_EXE%"=="" goto NO_INNO
+
+set "RSKITS_VERSION=%VERSION%"
+"%ISCC_EXE%" /DAppVersion=%VERSION% installer_windows.iss
 if errorlevel 1 (
-  echo AVISO: Inno Setup (iscc.exe) nao encontrado.
-  echo   Instale o Inno Setup 6 em https://jrsoftware.org/isdl.php e rode de novo.
-  echo   Enquanto isso, o executavel esta em: release\windows\RS-KITS-%VERSION%.exe
-) else (
-  set "RSKITS_VERSION=%VERSION%"
-  iscc /DAppVersion=%VERSION% installer_windows.iss
-  if errorlevel 1 exit /b 1
+  echo ERRO: Compilacao do instalador Inno Setup falhou.
+  exit /b 1
 )
 
 echo.
-echo Pronto! Artefatos em desktop\release\windows\: %VERSION%
+echo Build concluido com sucesso! Artefatos em desktop\release\windows\ : %VERSION%
 dir /b release\windows
+exit /b 0
+
+:INNO_FOUND
+set "RSKITS_VERSION=%VERSION%"
+ISCC.exe /DAppVersion=%VERSION% installer_windows.iss
+if errorlevel 1 (
+  echo ERRO: Compilacao do instalador Inno Setup falhou.
+  exit /b 1
+)
+
+echo.
+echo Build concluido com sucesso! Artefatos em desktop\release\windows\ : %VERSION%
+dir /b release\windows
+exit /b 0
+
+:NO_INNO
+echo.
+echo AVISO: Inno Setup (ISCC.exe) nao encontrado no PATH.
+echo   Instale o Inno Setup 6 em https://jrsoftware.org/isdl.php e rode de novo.
+echo.
+echo   Enquanto isso, o executavel foi gerado com sucesso em:
+echo     release\windows\RS-KITS-%VERSION%.exe
+echo.
+echo   O instalador RS-KITS-Setup-%VERSION%.exe sera gerado apos instalar o Inno Setup.
+dir /b release\windows
+exit /b 0

@@ -7,9 +7,10 @@ Tudo roda na mesma máquina, sem depender da rede.
 import csv
 import io
 import os
-import random
 import re
+import shutil
 import unicodedata
+from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +21,10 @@ import config
 import database as db
 import package_builder
 import sync
+import runtime
+from fastapi.responses import JSONResponse
+from event_profile import assert_event, validate_database
+import embedded_data
 from models import (
     AuditCreate,
     DeliverRequest,
@@ -35,7 +40,60 @@ from models import (
 )
 
 config.ensure_dirs()
+validate_database(config.DB_PATH, embedded_data.event_id())
 db.init_db()
+
+
+def _user_download_dirs() -> list[Path]:
+    """Pastas onde o usuário normalmente salva o que baixou (Windows/Desktop)."""
+    home = Path.home()
+    out = []
+    for name in ("Downloads", "Desktop"):
+        folder = home / name
+        if folder.is_dir():
+            out.append(folder)
+    return out
+
+
+def import_downloaded_packages() -> None:
+    """Copia para packages/ os .rksits baixados ainda não vistos.
+
+    O evento trabalhado é definido PELO PACOTE (event.id), nunca pelo estado
+    antigo do SQLite. Arquivos já vistos (mesmo nome/tamanho/mtime) são
+    ignorados; uma nova cópia re-instala o pacote (upsert por id não duplica).
+    """
+    if not config.PACKAGES_DIR or not os.path.isdir(config.PACKAGES_DIR):
+        config.ensure_dirs()
+    seen_key = "downloaded_packages_seen"
+    seen = set(x for x in (db.get_config(seen_key) or "").split("|") if x)
+    discovered: list[str] = []
+    for folder in _user_download_dirs():
+        try:
+            candidates = [p for p in folder.rglob("*.rksits") if p.is_file()]
+        except OSError:
+            continue
+        for src in sorted(candidates):
+            try:
+                stat = src.stat()
+            except OSError:
+                continue
+            key = f"{src.name}:{stat.st_size}:{stat.st_mtime_ns}"
+            if key in seen:
+                continue
+            dest = os.path.join(config.PACKAGES_DIR, src.name)
+            try:
+                shutil.copy2(src, dest)
+            except OSError:
+                continue
+            discovered.append(key)
+            # Reimportação de atualizações: remove a marca de instalado para que
+            # o auto-install processe o novo conteúdo (ids preservados).
+            installed = [n for n in (db.get_config("installed_packages") or "").split("|")
+                         if n and n != src.name]
+            db.set_config("installed_packages", "|".join(sorted(installed)))
+    if discovered:
+        seen.update(discovered)
+        db.set_config(seen_key, "|".join(sorted(seen)))
 
 
 def auto_install_packages() -> None:
@@ -63,37 +121,61 @@ def auto_install_packages() -> None:
                      event.get("status", "EM_ANDAMENTO"), now(), now()),
                 )
             org = pkg.get("organizer")
-            if org and org.get("name"):
-                email = org.get("email") or ""
-                row = db.fetch_one("SELECT id FROM users WHERE TRIM(email) = ? OR TRIM(name) = ?",
-                                   (email, org["name"]))
-                if row:
-                    db.execute("UPDATE users SET password_hash = ?, email = ?, updated_at = ? WHERE id = ?",
-                               (db.hash_password(org.get("offlinePassword", "123456")), email, now(), row["id"]))
-                    db.set_config(f"pkg_org_{event_id}", row["id"])
+            if org and (org.get("id") or org.get("name")):
+                org_id = org.get("id") or ""
+                org_row = None
+                if org_id:
+                    org_row = db.fetch_one("SELECT * FROM users WHERE id = ?", (org_id,))
+                if org_row is None and org.get("email"):
+                    org_row = db.fetch_one(
+                        "SELECT * FROM users WHERE TRIM(email) = ?", (org["email"],))
+                if org_row is not None:
+                    # Mesmo usuário/identidade: nunca altera a senha central.
+                    _sync_package_organizer_fields(org_row, org)
+                    db.set_config(f"pkg_org_{event_id}", org_row["id"])
                 else:
-                    org_id = db.new_id()
+                    new_org_id = org_id or db.new_id()
                     db.execute(
-                        "INSERT INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
-                        " VALUES (?, ?, ?, ?, ?, 'ORGANIZADOR', ?, ?)",
-                        (org_id, org["name"], email, org.get("cpf", ""),
-                         db.hash_password(org.get("offlinePassword", "123456")), now(), now()),
+                        "INSERT INTO users (id, name, email, cpf, cnpj, password_hash,"
+                        " role, created_at, updated_at)"
+                        " VALUES (?, ?, ?, ?, ?, ?, 'ORGANIZADOR', ?, ?)",
+                        (new_org_id, org.get("name", ""), org.get("email", ""),
+                         org.get("cpf", ""), org.get("cnpj", ""),
+                         db.hash_password(db.new_id()), now(), now()),
                     )
-                    db.set_config(f"pkg_org_{event_id}", org_id)
+                    db.set_config(f"pkg_org_{event_id}", new_org_id)
             upsert_athletes(event_id, pkg.get("athletes", []), "Pacote")
             cloud = pkg.get("config", {}).get("cloudUrl")
             if cloud:
                 sync.set_cloud_url(cloud)
             installed.add(name)
             db.set_config("installed_packages", "|".join(sorted(installed)))
+            # O pacote determina o evento da distribuição: nada de depender do
+            # SQLite antigo para descobrir qual evento deve ser aberto.
+            db.set_config("active_event", event_id)
             db.log_audit("Pacote", None, event.get("name"), "pacote_instalado", None, name)
         except Exception as exc:  # nunca impede a inicialização
             print(f"[auto-install] falha ao instalar {name}: {exc}")
 
 
-auto_install_packages()
-
 app = FastAPI(title="RS KITS Desktop")
+
+
+@app.middleware("http")
+async def enforce_event_profile(request: Request, call_next):
+    """The distribution's event boundary also applies to direct API calls."""
+    if runtime.ENFORCE_IDENTITY and request.url.path.startswith('/api/') and request.url.path != '/api/health':
+        if request.headers.get('X-RSKITS-Instance') != runtime.INSTANCE_ID:
+            return JSONResponse({"message": "Esta janela não pertence à instância atual. Reabra o aplicativo usando a versão atualizada."}, status_code=403)
+    expected = embedded_data.event_id()
+    if expected:
+        parts = request.url.path.strip("/").split("/")
+        if parts[:2] == ["api", "events"]:
+            if len(parts) > 2 and parts[2] != expected:
+                return JSONResponse({"message": "Este evento não pertence ao executável."}, status_code=403)
+            if (request.method == "POST" and len(parts) == 2) or (request.method == "DELETE" and len(parts) == 3):
+                return JSONResponse({"message": "O evento vinculado ao executável não pode ser criado ou excluído neste perfil."}, status_code=403)
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
@@ -227,27 +309,72 @@ def normalize_frontend_row(row: dict) -> dict:
     return data
 
 
+def _sync_package_organizer_fields(org_row, org: dict) -> None:
+    """Atualiza apenas campos de identidade vazios do organizador do pacote.
+
+    Jamais altera password_hash: gerar/baixar/instalar um .rksits não troca a
+    senha de usuários existentes.
+    """
+    updates = []
+    params = []
+    for col in ("email", "name", "cpf", "cnpj"):
+        value = (org.get(col) or "").strip()
+        if value and not (org_row[col] or "").strip():
+            updates.append(f"{col} = ?")
+            params.append(value)
+    if updates:
+        updates.append("updated_at = ?")
+        params.append(now())
+        params.append(org_row["id"])
+        db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", params)
+
+
 def upsert_athletes(event_id: str, rows: list[dict], usuario: str | None = None) -> dict:
     conn = db.get_conn()
     imported = updated = 0
     audits = []
     try:
-        for row in rows:
+        conn.execute("BEGIN IMMEDIATE")
+        def num_key(value):
+            text = str(value or "").strip().upper()
+            return str(int(text)) if text.isdigit() else text
+        def cpf_key(value):
+            return "".join(c for c in str(value or "") if c.isdigit())
+        existing_nums, existing_cpfs = {}, {}
+        for athlete in conn.execute("SELECT * FROM athletes WHERE event_id = ?", (event_id,)):
+            for key, mapping in ((num_key(athlete["num"]), existing_nums), (cpf_key(athlete["cpf_atleta"]), existing_cpfs)):
+                if key:
+                    mapping.setdefault(key, []).append(athlete)
+        prepared, nums, cpfs = [], set(), set()
+        for index, row in enumerate(rows):
             data = package_builder.json_to_db_athlete(normalize_frontend_row(row))
+            num, cpf = num_key(data.get("num")), cpf_key(data.get("cpf_atleta"))
+            matches_num, matches_cpf = existing_nums.get(num, []), existing_cpfs.get(cpf, [])
+            reason = None
+            if not str(data.get("nome_atleta") or "").strip() or not (num or cpf):
+                reason = "Informe nome e NUM ou CPF"
+            elif (num and num in nums) or (cpf and cpf in cpfs):
+                reason = "NUM ou CPF duplicado na planilha"
+            elif len(matches_num) > 1 or len(matches_cpf) > 1:
+                reason = "Cadastros existentes duplicados"
+            elif matches_num and cpf and cpf_key(matches_num[0]["cpf_atleta"]) not in ("", cpf):
+                reason = "NUM pertence a outro CPF"
+            elif matches_cpf and num and num_key(matches_cpf[0]["num"]) not in ("", num):
+                reason = "CPF pertence a outro NUM"
+            if reason:
+                raise HTTPException(status_code=400, detail=f"Linha {index + 2}: {reason}. Nenhum atleta foi importado.")
+            nums.add(num)
+            cpfs.add(cpf)
+            prepared.append((data, (matches_num or matches_cpf or [None])[0]))
+        for data, existing in prepared:
             data["event_id"] = event_id
             data["updated_at"] = now()
             data["created_at"] = now()
             if not data.get("status"):
                 data["status"] = "PENDENTE"
-            existing = None
-            if data.get("cpf_atleta"):
-                existing = conn.execute(
-                    "SELECT id FROM athletes WHERE event_id = ? AND cpf_atleta = ?",
-                    (event_id, data["cpf_atleta"]),
-                ).fetchone()
             if existing:
                 preserve = [
-                    "status", "data_entrega", "usuario_entrega", "nome_entrega",
+                    "id", "event_id", "obs_entrega", "status", "data_entrega", "usuario_entrega", "nome_entrega",
                     "cpf_entrega", "fone_entrega", "email_entrega", "terceiro",
                     "data_estorno", "usuario_estorno", "created_at",
                 ]
@@ -287,17 +414,25 @@ def upsert_athletes(event_id: str, rows: list[dict], usuario: str | None = None)
     return {"imported": imported, "updated": updated, "total": imported + updated}
 
 
+# Importação/instalação automática no boot. Executa DEPOIS de todas as
+# definições acima (now/_sync_package_organizer_fields/upsert_athletes etc.).
+embedded_data.install(db)
+if not embedded_data.is_distribution():
+    # Unbound builds must not select arbitrary events from Downloads/Desktop.
+    # Legacy automatic installation is available only by explicit opt-in.
+    if os.environ.get("RSKITS_AUTO_IMPORT_PACKAGES") == "1":
+        import_downloaded_packages()
+        auto_install_packages()
+
+
 # --------------------------------------------------------------------------- #
 # Auth
 # --------------------------------------------------------------------------- #
 @app.post("/api/auth/login")
 def login(payload: LoginRequest):
-    identifier = payload.identifier.strip()
-    row = db.fetch_one(
-        "SELECT * FROM users WHERE TRIM(email) = ? OR TRIM(cpf) = ? OR TRIM(name) = ?",
-        (identifier, identifier, identifier),
-    )
-    if not row or not db.verify_password(payload.password, row["password_hash"]):
+    from authentication import authenticate
+    row = authenticate(payload.identifier, payload.password)
+    if not row:
         raise HTTPException(401, "Identificador ou senha inválidos.")
     return {"user": serialize_user(row), "access_token": row["id"]}
 
@@ -332,6 +467,8 @@ def register(request: Request, body: dict):
          db.hash_password(body["password"]), role, body.get("phone") or "",
          organizer_id, now(), now()),
     )
+    if role == "ORGANIZADOR" and body.get("accessCode"):
+        db.set_access_code(user_id, body["accessCode"])
     db.log_audit(user["name"], None, name, "usuario_criado", None, role)
     return {"user": serialize_user(
         db.fetch_one("SELECT * FROM users WHERE id = ?", (user_id,)))}
@@ -344,7 +481,7 @@ def me(request: Request):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "rskits-desktop", "port": config.PORT}
+    return {"status": "ok", "service": "rskits-desktop", "port": config.PORT, "instanceId": runtime.INSTANCE_ID, "eventId": embedded_data.event_id()}
 
 
 # --------------------------------------------------------------------------- #
@@ -659,8 +796,22 @@ def create_operator(request: Request, payload: OperatorCreate):
 
 
 @app.get("/api/users")
-def list_users():
-    return [serialize_user(r) for r in db.fetch_all("SELECT * FROM users ORDER BY role, name")]
+def list_users(request: Request, eventId: str | None = None):
+    user = require_role(request, {"ADMIN", "ORGANIZADOR", "OPERADOR"})
+    rows = db.fetch_all("SELECT * FROM users ORDER BY role, name")
+    if user["role"] == "OPERADOR":
+        return [serialize_user(r) for r in rows if r["id"] == user["id"]]
+    if eventId:
+        if not db.fetch_one("SELECT id FROM events WHERE id=?", (eventId,)):
+            raise HTTPException(404, "Evento não encontrado.")
+        organizer_ids = set(_event_organizer_ids(eventId))
+        if user["role"] == "ORGANIZADOR" and user["id"] not in organizer_ids:
+            raise HTTPException(403, "Acesso negado ao evento.")
+        rows = [r for r in rows if (r["role"] == "ORGANIZADOR" and r["id"] in organizer_ids) or (r["role"] == "OPERADOR" and r["organizer_id"] in organizer_ids)]
+    if user["role"] == "ORGANIZADOR":
+        linked = any(user["id"] in _event_organizer_ids(event["id"]) for event in db.fetch_all("SELECT id FROM events"))
+        rows = [r for r in rows if linked and (r["id"] == user["id"] or (r["role"] == "OPERADOR" and r["organizer_id"] == user["id"]))]
+    return [serialize_user(r) for r in rows]
 
 
 @app.post("/api/organizers")
@@ -676,7 +827,7 @@ def create_organizer(request: Request, payload: OrganizerCreate):
          payload.phone or "", db.hash_password(payload.password), now(), now()),
     )
     if payload.accessCode:
-        db.set_config(f"org_code_{org_id}", payload.accessCode)
+        db.set_access_code(org_id, payload.accessCode)
     db.log_audit(user["name"], None, payload.name, "organizador_criado", None, "ORGANIZADOR")
     return {"id": org_id, "name": payload.name}
 
@@ -694,6 +845,14 @@ def update_user(request: Request, user_id: str, payload: UserUpdate):
 
     changes: list[str] = []
     params: list = []
+    if payload.organizerId is not None:
+        if user["role"] != "ADMIN" or row["role"] != "OPERADOR":
+            raise HTTPException(403, "Apenas o administrador altera o organizador de um operador.")
+        organizer = db.fetch_one("SELECT role FROM users WHERE id = ?", (payload.organizerId,))
+        if not organizer or organizer["role"] != "ORGANIZADOR":
+            raise HTTPException(400, "Selecione um organizador válido.")
+        changes.append("organizer_id = ?")
+        params.append(payload.organizerId)
     for col in ("name", "cpf", "cnpj", "email", "phone"):
         value = getattr(payload, col, None)
         if value is not None:
@@ -809,15 +968,13 @@ def generate_package(request: Request, event_id: str):
 
     org_id = db.get_config(f"pkg_org_{event_id}")
     organizer = None
-    offline_password = ""
     if org_id:
         row = db.fetch_one("SELECT * FROM users WHERE id = ?", (org_id,))
         if row:
-            offline_password = f"{random.randint(0, 999999):06d}"
-            db.execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
-                       (db.hash_password(offline_password), now(), row["id"]))
+            # O pacote representa o organizador (mesmo id/identidade) sem alterar
+            # a senha central do usuário existente.
             organizer = {"id": row["id"], "name": row["name"], "email": row["email"] or "",
-                         "offlinePassword": offline_password}
+                         "cpf": row["cpf"] or "", "cnpj": row["cnpj"] or ""}
 
     event_data = dict(event)
     event_data["organizer"] = user["name"]
@@ -843,7 +1000,9 @@ def list_packages():
     installed_set = set(p.strip() for p in installed.split("|") if p.strip())
     for name in package_builder.list_packages():
         items.append({"filename": name, "installed": name in installed_set})
-    return {"packages": items}
+    # Evento preparado pela distribuição (.rksits). O frontend desktop usa este
+    # id para abrir o evento do pacote importado (nunca o evento antigo).
+    return {"packages": items, "activeEventId": db.get_config("active_event") or None}
 
 
 @app.post("/api/packages/install")
@@ -855,6 +1014,10 @@ def install_package(request: Request, payload: InstallRequest):
     pkg = package_builder.read_package(path)
 
     event = pkg.get("event", {})
+    try:
+        assert_event(embedded_data.event_id(), event.get("id"))
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc
     event_id = event.get("id") or db.new_id()
     existing = db.fetch_one("SELECT id FROM events WHERE id = ?", (event_id,))
     if existing:
@@ -872,22 +1035,27 @@ def install_package(request: Request, payload: InstallRequest):
         )
 
     org = pkg.get("organizer")
-    if org and org.get("name"):
-        email = org.get("email") or ""
-        cpf = org.get("cpf", "")
-        row = db.fetch_one("SELECT id FROM users WHERE TRIM(email) = ? OR TRIM(name) = ?",
-                           (email, org["name"]))
-        if row:
-            db.execute("UPDATE users SET password_hash = ?, email = ?, updated_at = ? WHERE id = ?",
-                       (db.hash_password(org.get("offlinePassword", "123456")), email, now(), row["id"]))
-            org_id = row["id"]
+    if org and (org.get("id") or org.get("name")):
+        org_id = org.get("id") or ""
+        org_row = None
+        if org_id:
+            org_row = db.fetch_one("SELECT * FROM users WHERE id = ?", (org_id,))
+        if org_row is None and org.get("email"):
+            org_row = db.fetch_one(
+                "SELECT * FROM users WHERE TRIM(email) = ?", (org["email"],))
+        if org_row is not None:
+            # Mesmo usuário/identidade: nunca altera a senha central.
+            _sync_package_organizer_fields(org_row, org)
+            org_id = org_row["id"]
         else:
-            org_id = db.new_id()
+            org_id = org_id or db.new_id()
             db.execute(
-                "INSERT INTO users (id, name, email, cpf, password_hash, role, created_at, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, 'ORGANIZADOR', ?, ?)",
-                (org_id, org["name"], email, cpf,
-                 db.hash_password(org.get("offlinePassword", "123456")), now(), now()),
+                "INSERT INTO users (id, name, email, cpf, cnpj, password_hash,"
+                " role, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, 'ORGANIZADOR', ?, ?)",
+                (org_id, org.get("name", ""), org.get("email", ""),
+                 org.get("cpf", ""), org.get("cnpj", ""),
+                 db.hash_password(db.new_id()), now(), now()),
             )
         db.set_config(f"pkg_org_{event_id}", org_id)
 
@@ -900,6 +1068,8 @@ def install_package(request: Request, payload: InstallRequest):
     installed = set(p.strip() for p in (db.get_config("installed_packages") or "").split("|") if p.strip())
     installed.add(payload.filename)
     db.set_config("installed_packages", "|".join(sorted(installed)))
+    # O pacote importado define o evento daquela distribuição.
+    db.set_config("active_event", event_id)
     db.log_audit("Pacote", None, event.get("name"), "pacote_instalado", None, payload.filename)
     return {"ok": True, "event_id": event_id, "event": event.get("name"),
             "imported": result["imported"], "updated": result["updated"]}
@@ -948,12 +1118,14 @@ def _iter_releases() -> list[dict]:
 
 
 @app.get("/api/downloads")
-def list_downloads():
+def list_downloads(request: Request):
+    require_role(request, {"ADMIN"})
     return _iter_releases()
 
 
 @app.get("/api/downloads/{filename}")
-def download_file(filename: str):
+def download_file(request: Request, filename: str):
+    require_role(request, {"ADMIN"})
     safe = os.path.basename(filename)
     if safe != filename:
         raise HTTPException(404, "Arquivo inválido.")

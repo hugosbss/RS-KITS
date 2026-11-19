@@ -8,5 +8,6 @@ cp desktop/release/linux/*.AppImage backend/downloads/ 2>/dev/null || true
 cp desktop/release/linux/*.deb backend/downloads/ 2>/dev/null || true
 cp desktop/release/windows/RS-KITS-Setup-*.exe backend/downloads/ 2>/dev/null || true
 cp desktop/release/windows/RS-KITS-*.exe backend/downloads/ 2>/dev/null || true
+cp desktop/release/windows/RS-KITS-*.exe.json backend/downloads/ 2>/dev/null || true
 echo "Instaladores disponíveis no backend:"
 ls -lh backend/downloads
